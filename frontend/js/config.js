@@ -4,8 +4,8 @@
 const CONFIG = {
     // Backend API configuration
     API: {
-        BASE_URL: 'https://lucy-clone-vvd7.onrender.com',
-        WS_URL: 'wss://lucy-clone-vvd7.onrender.com/ws',
+        BASE_URL: 'https://lucy-clone-1.onrender.com',
+        WS_URL: 'wss://lucy-clone-1.onrender.com/ws',
         REQUEST_TIMEOUT: 10000,
         
         ENDPOINTS: {
