@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Lucy Virtual Try-On</title>
+    
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/meshopt_decoder.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    
+    <!-- MediaPipe Pose -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/pose.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675469404/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1675469404/drawing_utils.js"></script>
+    
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <h2>Lucy Virtual Try-On</h2>
+            <p id="loading-text">Initializing camera...</p>
+        </div>
+    </div>
+
+    <!-- Main App Container -->
+    <div id="app-container" class="app-container" style="display: none;">
+        
+        <!-- Camera Video (Hidden, used for capture) -->
+        <video id="camera-video" autoplay playsinline style="display: none;"></video>
+        
+        <!-- Main Canvas (Camera + 3D Overlay) -->
+        <canvas id="main-canvas"></canvas>
+        
+        <!-- MediaPipe Canvas (Hidden, for pose detection) -->
+        <canvas id="pose-canvas" style="display: none;"></canvas>
+        
+        <!-- Top Bar -->
+        <div class="top-bar">
+            <div class="logo">
+                <h1>🎭 Lucy</h1>
+            </div>
+            <div class="status-indicators">
+                <div class="status-item" id="camera-status">
+                    <span class="status-dot"></span>
+                    <span>Camera</span>
+                </div>
+                <div class="status-item" id="tracking-status">
+                    <span class="status-dot"></span>
+                    <span>Tracking</span>
+                </div>
+                <div class="status-item" id="ai-status">
+                    <span class="status-dot"></span>
+                    <span>AI</span>
+                </div>
+                <div class="fps-counter" id="fps-counter">30 FPS</div>
+            </div>
+        </div>
+
+        <!-- Pose Guide Overlay (shows when first loading) -->
+        <div id="pose-guide" class="pose-guide">
+            <div class="guide-silhouette">
+                <svg width="200" height="400" viewBox="0 0 200 400">
+                    <circle cx="100" cy="40" r="30" fill="none" stroke="white" stroke-width="2" opacity="0.6"/>
+                    <line x1="100" y1="70" x2="100" y2="200" stroke="white" stroke-width="2" opacity="0.6"/>
+                    <line x1="100" y1="100" x2="50" y2="150" stroke="white" stroke-width="2" opacity="0.6"/>
+                    <line x1="100" y1="100" x2="150" y2="150" stroke="white" stroke-width="2" opacity="0.6"/>
+                    <line x1="100" y1="200" x2="70" y2="280" stroke="white" stroke-width="2" opacity="0.6"/>
+                    <line x1="100" y1="200" x2="130" y2="280" stroke="white" stroke-width="2" opacity="0.6"/>
+                    <line x1="70" y1="280" x2="60" y2="360" stroke="white" stroke-width="2" opacity="0.6"/>
+                    <line x1="130" y1="280" x2="140" y2="360" stroke="white" stroke-width="2" opacity="0.6"/>
+                </svg>
+            </div>
+            <p>Stand in front of camera<br>Keep full body visible</p>
+        </div>
+
+        <!-- Fabric Selector Bottom Panel -->
+        <div class="fabric-panel">
+            <div class="panel-header">
+                <h3>Select Fabric</h3>
+                <button id="scan-fabric-btn" class="scan-btn">
+                    📷 Scan Fabric
+                </button>
+            </div>
+            
+            <div class="fabric-scroll" id="fabric-scroll">
+                <!-- Fabric items will be dynamically added here -->
+                <div class="fabric-item loading-skeleton">
+                    <div class="fabric-thumbnail"></div>
+                    <span>Loading...</span>
+                </div>
+                <div class="fabric-item loading-skeleton">
+                    <div class="fabric-thumbnail"></div>
+                    <span>Loading...</span>
+                </div>
+                <div class="fabric-item loading-skeleton">
+                    <div class="fabric-thumbnail"></div>
+                    <span>Loading...</span>
+                </div>
+            </div>
+            
+            <div class="selected-fabric-info" id="selected-fabric-info" style="display: none;">
+                <span class="fabric-name"></span>
+            </div>
+        </div>
+
+        <!-- Capture Button -->
+        <div class="capture-controls">
+            <button id="capture-btn" class="capture-btn" title="Capture premium AI-enhanced photo">
+                <svg width="60" height="60" viewBox="0 0 60 60">
+                    <circle cx="30" cy="30" r="28" fill="white" opacity="0.9"/>
+                    <circle cx="30" cy="30" r="24" fill="none" stroke="#333" stroke-width="2"/>
+                </svg>
+            </button>
+            <p class="capture-hint">Tap to capture premium view</p>
+        </div>
+
+        <!-- AI Blend Indicator -->
+        <div class="ai-blend-indicator" id="ai-blend-indicator">
+            <div class="blend-label">AI Enhancement</div>
+            <div class="blend-bar">
+                <div class="blend-fill" id="blend-fill"></div>
+            </div>
+            <div class="blend-percentage" id="blend-percentage">0%</div>
+        </div>
+
+    </div>
+
+    <!-- Capture Result Modal -->
+    <div id="capture-modal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close" id="modal-close">&times;</button>
+            <h2>Premium Capture</h2>
+            <div class="capture-loading" id="capture-loading">
+                <div class="spinner"></div>
+                <p>Generating AI-enhanced photo...</p>
+            </div>
+            <div class="capture-result" id="capture-result" style="display: none;">
+                <img id="result-image" alt="Captured result">
+                <div class="result-actions">
+                    <button id="download-btn" class="action-btn primary">
+                        💾 Download
+                    </button>
+                    <button id="share-btn" class="action-btn">
+                        📤 Share
+                    </button>
+                    <button id="retake-btn" class="action-btn">
+                        🔄 Retake
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fabric Scan Modal -->
+    <div id="fabric-scan-modal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close" id="fabric-scan-close">&times;</button>
+            <h2>Scan Fabric</h2>
+            <div class="scan-guide">
+                <p>Place fabric flat on a surface and photograph it</p>
+                <div class="scan-frame">
+                    <div class="scan-corner top-left"></div>
+                    <div class="scan-corner top-right"></div>
+                    <div class="scan-corner bottom-left"></div>
+                    <div class="scan-corner bottom-right"></div>
+                </div>
+                <input type="file" id="fabric-upload" accept="image/*" capture="environment">
+                <label for="fabric-upload" class="upload-btn">
+                    📷 Take Photo
+                </label>
+            </div>
+            <div class="scan-processing" id="scan-processing" style="display: none;">
+                <div class="spinner"></div>
+                <p>Processing fabric texture...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error Toast -->
+    <div id="error-toast" class="toast error-toast">
+        <span id="error-message"></span>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/keyframe-selector.js"></script>
+    <script src="js/camera.js"></script>
+    <script src="js/pose-tracker.js"></script>
+    <script src="js/scene.js"></script>
+    <script src="js/loader.js"></script>
+    <script src="js/materials.js"></script>
+    <script src="js/skeleton-mapper.js"></script>
+    <script src="js/renderer.js"></script>
+    <script src="js/fabric-selector.js"></script>
+    <script src="js/ai-pipeline.js"></script>
+    <script src="js/capture.js"></script>
+    <script src="js/app.js"></script>
+
+</body>
+</html>

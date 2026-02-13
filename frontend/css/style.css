@@ -1,0 +1,847 @@
+/* Lucy Virtual Try-On - FIXED OVERLAY LAYOUT
+   Jacket now overlays camera feed properly */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root {
+    /* Colors */
+    --primary: #6366F1;
+    --primary-dark: #4F46E5;
+    --secondary: #EC4899;
+    --success: #10B981;
+    --error: #EF4444;
+    
+    /* Backgrounds */
+    --bg-dark: #0A0E1A;
+    --bg-card: rgba(15, 23, 42, 0.85);
+    --bg-glass: rgba(255, 255, 255, 0.08);
+    --border: rgba(255, 255, 255, 0.12);
+    
+    /* Text */
+    --text-primary: #F8FAFC;
+    --text-secondary: #CBD5E1;
+    --text-muted: #64748B;
+    
+    /* Spacing */
+    --space-xs: 0.25rem;
+    --space-sm: 0.5rem;
+    --space-md: 0.75rem;
+    --space-lg: 1rem;
+    --space-xl: 1.5rem;
+    
+    /* Effects */
+    --shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6);
+    
+    /* Safe areas for mobile */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+    /* Layout sizes */
+    --top-bar-height: 56px;
+    --fabric-panel-height: 180px;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    overflow: hidden;
+    background: var(--bg-dark);
+    color: var(--text-primary);
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ============================================================================
+   LOADING SCREEN
+   ============================================================================ */
+
+.loading-screen {
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(135deg, #0A0E1A 0%, #1E293B 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.loading-content {
+    text-align: center;
+}
+
+.loading-content h2 {
+    font-size: clamp(1.75rem, 8vw, 3rem);
+    margin: var(--space-lg) 0 var(--space-sm);
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.loading-content p {
+    font-size: 0.938rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.spinner {
+    width: 50px;
+    height: 50px;
+    border: 3px solid rgba(99, 102, 241, 0.2);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ============================================================================
+   MAIN CONTAINER - FIXED: OVERLAY LAYOUT
+   ============================================================================ */
+
+.app-container {
+    position: fixed;
+    inset: 0;
+    background: var(--bg-dark);
+}
+
+/* ✅ FIXED: Camera takes full width, jacket overlays on top */
+#camera-video {
+    position: fixed;
+    top: calc(var(--safe-top) + var(--top-bar-height));
+    left: 0;
+    width: 100vw;
+    height: calc(100vh - var(--top-bar-height) - var(--fabric-panel-height) - var(--safe-top) - var(--safe-bottom));
+    object-fit: cover;
+    display: block !important;
+    z-index: 1;
+    background: #000;
+}
+
+/* ✅ FIXED: Canvas overlays camera with transparency */
+#main-canvas {
+    position: fixed;
+    top: calc(var(--safe-top) + var(--top-bar-height));
+    left: 0;
+    width: 100vw;
+    height: calc(100vh - var(--top-bar-height) - var(--fabric-panel-height) - var(--safe-top) - var(--safe-bottom));
+    display: block;
+    z-index: 2; /* Above camera */
+    pointer-events: none; /* Allow clicks to pass through */
+}
+
+/* ============================================================================
+   TOP BAR - COMPACT
+   ============================================================================ */
+
+.top-bar {
+    position: fixed;
+    top: var(--safe-top);
+    left: 0;
+    right: 0;
+    height: 56px;
+    background: var(--bg-card);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--space-lg);
+    z-index: 100;
+    border-bottom: 1px solid var(--border);
+    box-shadow: var(--shadow);
+}
+
+.logo h1 {
+    font-size: 1.25rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--primary) 0%, #818CF8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.status-indicators {
+    display: flex;
+    gap: var(--space-md);
+    align-items: center;
+}
+
+.status-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+}
+
+/* Hide text labels on mobile, show only dots */
+.status-item span:not(.status-dot) {
+    display: none;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--error);
+    transition: all 0.2s;
+}
+
+.status-item.active .status-dot {
+    background: var(--success);
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
+}
+
+.fps-counter {
+    font-family: 'Courier New', monospace;
+    font-size: 0.813rem;
+    padding: var(--space-xs) var(--space-sm);
+    background: var(--bg-glass);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-weight: 700;
+    min-width: 60px;
+    text-align: center;
+}
+
+/* ============================================================================
+   POSE GUIDE - SMALLER
+   ============================================================================ */
+
+.pose-guide {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    z-index: 50;
+    pointer-events: none;
+    background: var(--bg-card);
+    backdrop-filter: blur(20px);
+    padding: var(--space-lg);
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+    max-width: 280px;
+}
+
+.guide-silhouette svg {
+    width: 120px;
+    height: 240px;
+}
+
+.pose-guide p {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    line-height: 1.4;
+    margin-top: var(--space-sm);
+}
+
+/* ============================================================================
+   AI ENHANCEMENT - MOVED TO TOP RIGHT, COMPACT
+   ============================================================================ */
+
+.ai-blend-indicator {
+    position: fixed;
+    top: calc(56px + var(--safe-top) + var(--space-sm));
+    right: var(--space-md);
+    background: var(--bg-card);
+    backdrop-filter: blur(20px);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: 10px;
+    z-index: 99;
+    min-width: 140px;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+}
+
+.blend-label {
+    font-size: 0.688rem;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.blend-bar {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 4px;
+}
+
+.blend-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary) 0%, var(--secondary) 100%);
+    width: 0%;
+    transition: width 0.5s ease;
+}
+
+.blend-percentage {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-align: right;
+    color: var(--text-primary);
+}
+
+/* ============================================================================
+   CAPTURE BUTTON - CENTERED, ABOVE FABRIC PANEL
+   ============================================================================ */
+
+.capture-controls {
+    position: fixed;
+    bottom: calc(140px + var(--safe-bottom));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 95;
+    text-align: center;
+    pointer-events: all; /* ✅ Enable clicks */
+}
+
+.capture-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: transform 0.2s;
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.5));
+    padding: 0;
+    width: 64px;
+    height: 64px;
+    pointer-events: all; /* ✅ Enable clicks */
+}
+
+.capture-btn:active {
+    transform: scale(0.92);
+}
+
+.capture-hint {
+    display: none; /* Hide on mobile to save space */
+}
+
+/* ============================================================================
+   FABRIC PANEL - COMPACT, BOTTOM
+   ============================================================================ */
+
+.fabric-panel {
+    position: fixed;
+    bottom: var(--safe-bottom);
+    left: 0;
+    right: 0;
+    background: var(--bg-card);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-top: 1px solid var(--border);
+    z-index: 90;
+    padding: var(--space-md) var(--space-lg);
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.4);
+    max-height: 180px;
+    pointer-events: all; /* ✅ Enable clicks */
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-sm);
+}
+
+.panel-header h3 {
+    font-size: 0.938rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.scan-btn {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: white;
+    border: none;
+    padding: var(--space-xs) var(--space-md);
+    border-radius: 8px;
+    font-size: 0.813rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.15s;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+
+.scan-btn:active {
+    transform: scale(0.95);
+}
+
+.fabric-scroll {
+    display: flex;
+    gap: var(--space-md);
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: var(--space-sm) 0;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+
+.fabric-scroll::-webkit-scrollbar {
+    display: none;
+}
+
+.fabric-item {
+    flex-shrink: 0;
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.fabric-item:active {
+    transform: scale(0.95);
+}
+
+.fabric-thumbnail {
+    width: 70px;
+    height: 70px;
+    border-radius: 12px;
+    background: var(--bg-glass);
+    background-size: cover;
+    background-position: center;
+    border: 2px solid transparent;
+    transition: all 0.2s;
+    margin-bottom: var(--space-xs);
+}
+
+.fabric-item.selected .fabric-thumbnail {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
+}
+
+.fabric-item span {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 70px;
+}
+
+.fabric-item.selected span {
+    color: var(--primary);
+}
+
+.loading-skeleton .fabric-thumbnail {
+    background: linear-gradient(90deg, 
+        rgba(255, 255, 255, 0.05) 25%, 
+        rgba(255, 255, 255, 0.1) 50%, 
+        rgba(255, 255, 255, 0.05) 75%);
+    background-size: 200% 100%;
+    animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.selected-fabric-info {
+    margin-top: var(--space-sm);
+    padding: var(--space-sm);
+    background: var(--bg-glass);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    text-align: center;
+}
+
+.fabric-name {
+    font-weight: 600;
+    font-size: 0.813rem;
+    color: var(--text-primary);
+}
+
+/* ============================================================================
+   MODALS
+   ============================================================================ */
+
+.modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.92);
+    backdrop-filter: blur(4px);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-lg);
+}
+
+.modal.active {
+    display: flex;
+}
+
+.modal-content {
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: var(--space-xl);
+    width: 100%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+    position: relative;
+    box-shadow: var(--shadow-lg);
+}
+
+.modal-close {
+    position: absolute;
+    top: var(--space-md);
+    right: var(--space-md);
+    background: var(--bg-glass);
+    border: 1px solid var(--border);
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.modal-close:active {
+    transform: scale(0.9);
+    background: var(--error);
+}
+
+.modal-content h2 {
+    margin-bottom: var(--space-lg);
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+
+.capture-loading,
+.scan-processing {
+    text-align: center;
+    padding: var(--space-xl) 0;
+}
+
+.capture-loading p,
+.scan-processing p {
+    margin-top: var(--space-lg);
+    font-size: 1rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.capture-result img {
+    width: 100%;
+    border-radius: 12px;
+    margin-bottom: var(--space-lg);
+    box-shadow: var(--shadow);
+}
+
+.result-actions {
+    display: flex;
+    gap: var(--space-sm);
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.action-btn {
+    padding: var(--space-md) var(--space-lg);
+    border: none;
+    border-radius: 10px;
+    font-size: 0.938rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: var(--bg-glass);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+}
+
+.action-btn.primary {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    border-color: var(--primary);
+}
+
+.action-btn:active {
+    transform: scale(0.95);
+}
+
+/* Fabric scan modal */
+.scan-guide p {
+    margin-bottom: var(--space-lg);
+    font-size: 0.938rem;
+    color: var(--text-secondary);
+}
+
+.scan-frame {
+    width: 240px;
+    height: 240px;
+    margin: var(--space-lg) auto;
+    position: relative;
+    border: 2px dashed rgba(99, 102, 241, 0.3);
+    border-radius: 12px;
+}
+
+.scan-corner {
+    position: absolute;
+    width: 32px;
+    height: 32px;
+    border-color: var(--primary);
+    border-style: solid;
+}
+
+.scan-corner.top-left {
+    top: -2px;
+    left: -2px;
+    border-width: 3px 0 0 3px;
+    border-radius: 12px 0 0 0;
+}
+
+.scan-corner.top-right {
+    top: -2px;
+    right: -2px;
+    border-width: 3px 3px 0 0;
+    border-radius: 0 12px 0 0;
+}
+
+.scan-corner.bottom-left {
+    bottom: -2px;
+    left: -2px;
+    border-width: 0 0 3px 3px;
+    border-radius: 0 0 0 12px;
+}
+
+.scan-corner.bottom-right {
+    bottom: -2px;
+    right: -2px;
+    border-width: 0 3px 3px 0;
+    border-radius: 0 0 12px 0;
+}
+
+#fabric-upload {
+    display: none;
+}
+
+.upload-btn {
+    display: inline-block;
+    padding: var(--space-md) var(--space-xl);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: white;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.15s;
+}
+
+.upload-btn:active {
+    transform: scale(0.95);
+}
+
+/* ============================================================================
+   ERROR TOAST
+   ============================================================================ */
+
+.toast {
+    position: fixed;
+    top: calc(56px + var(--safe-top) + var(--space-md));
+    left: 50%;
+    transform: translateX(-50%);
+    padding: var(--space-md) var(--space-lg);
+    border-radius: 10px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    z-index: 2000;
+    opacity: 0;
+    transition: opacity 0.2s;
+    max-width: calc(100% - 2rem);
+    box-shadow: var(--shadow-lg);
+    backdrop-filter: blur(20px);
+    pointer-events: none;
+}
+
+.toast.show {
+    opacity: 1;
+}
+
+.error-toast {
+    background: rgba(239, 68, 68, 0.95);
+    color: white;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+/* ============================================================================
+   TABLET & DESKTOP
+   ============================================================================ */
+
+@media (min-width: 768px) {
+    .top-bar {
+        height: 70px;
+        padding: 0 var(--space-xl);
+    }
+    
+    .logo h1 {
+        font-size: 1.75rem;
+    }
+    
+    .status-item span:not(.status-dot) {
+        display: inline;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--text-secondary);
+    }
+    
+    .status-item {
+        gap: var(--space-sm);
+    }
+    
+    .status-dot {
+        width: 10px;
+        height: 10px;
+    }
+    
+    .ai-blend-indicator {
+        top: calc(70px + var(--safe-top) + var(--space-lg));
+        right: var(--space-xl);
+        min-width: 180px;
+        padding: var(--space-md) var(--space-lg);
+    }
+    
+    .blend-label {
+        font-size: 0.813rem;
+    }
+    
+    .blend-bar {
+        height: 6px;
+    }
+    
+    .fabric-panel {
+        padding: var(--space-lg) var(--space-xl);
+        max-height: 220px;
+    }
+    
+    .panel-header h3 {
+        font-size: 1.125rem;
+    }
+    
+    .scan-btn {
+        padding: var(--space-sm) var(--space-lg);
+        font-size: 0.938rem;
+    }
+    
+    .fabric-thumbnail {
+        width: 90px;
+        height: 90px;
+    }
+    
+    .fabric-item span {
+        font-size: 0.813rem;
+        max-width: 90px;
+    }
+    
+    .capture-controls {
+        bottom: calc(220px + var(--safe-bottom));
+    }
+    
+    .capture-btn {
+        width: 70px;
+        height: 70px;
+    }
+    
+    .capture-hint {
+        display: block;
+        margin-top: var(--space-md);
+        font-size: 0.938rem;
+        font-weight: 500;
+        color: var(--text-secondary);
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+    }
+}
+
+/* Landscape mobile */
+@media (orientation: landscape) and (max-height: 600px) {
+    .top-bar {
+        height: 48px;
+    }
+    
+    .logo h1 {
+        font-size: 1rem;
+    }
+    
+    .ai-blend-indicator {
+        top: calc(48px + var(--safe-top) + var(--space-xs));
+        padding: 4px var(--space-sm);
+        min-width: 120px;
+    }
+    
+    .blend-label {
+        font-size: 0.625rem;
+    }
+    
+    .blend-bar {
+        height: 3px;
+    }
+    
+    .blend-percentage {
+        font-size: 0.688rem;
+    }
+    
+    .fabric-panel {
+        padding: var(--space-sm) var(--space-md);
+        max-height: 120px;
+    }
+    
+    .panel-header h3 {
+        font-size: 0.813rem;
+    }
+    
+    .fabric-thumbnail {
+        width: 56px;
+        height: 56px;
+    }
+    
+    .fabric-item span {
+        font-size: 0.688rem;
+        max-width: 56px;
+    }
+    
+    .capture-controls {
+        bottom: calc(100px + var(--safe-bottom));
+    }
+    
+    .capture-btn {
+        width: 52px;
+        height: 52px;
+    }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
