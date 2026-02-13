@@ -1,12 +1,13 @@
 // 3D Model loader for Lucy Virtual Try-On
-// FIXED: Hide skeleton helpers, only show actual mesh
+// COMPLETE FIX: Multi-mesh model support, body hiding, extreme performance optimization
 
 class ModelLoader {
     constructor() {
         this.loader = new THREE.GLTFLoader();
         this.textureLoader = new THREE.TextureLoader();
         this.jacketModel = null;
-        this.jacketMesh = null;
+        this.jacketMeshes = []; // Support multiple jacket meshes
+        this.bodyMeshes = []; // Track body meshes to hide
         this.jacketSkeleton = null;
         this.isLoaded = false;
         
@@ -14,9 +15,6 @@ class ModelLoader {
         this.setupMeshoptDecoder();
     }
 
-    /**
-     * Setup Meshopt decoder
-     */
     setupMeshoptDecoder() {
         if (typeof MeshoptDecoder !== 'undefined') {
             this.loader.setMeshoptDecoder(MeshoptDecoder);
@@ -24,9 +22,6 @@ class ModelLoader {
         }
     }
 
-    /**
-     * Load jacket GLB model with optimization
-     */
     async loadJacket(modelPath = CONFIG.JACKET.MODEL_PATH) {
         return new Promise((resolve, reject) => {
             console.log('Loading jacket model:', modelPath);
@@ -38,73 +33,56 @@ class ModelLoader {
                     try {
                         this.jacketModel = gltf.scene;
                         
-                        // ✅ CRITICAL FIX: Hide all bones first
-                        this.hideAllBones(this.jacketModel);
+                        // Analyze and categorize all meshes
+                        console.log('=== ANALYZING MODEL ===');
+                        this.analyzeModel(this.jacketModel);
                         
-                        // Find the main mesh
-                        this.jacketMesh = this.findMesh(this.jacketModel);
+                        // Hide body meshes and bones
+                        this.hideBodyAndBones(this.jacketModel);
                         
-                        if (!this.jacketMesh) {
-                            throw new Error('No mesh found in jacket model');
+                        // Find jacket meshes
+                        this.findJacketMeshes(this.jacketModel);
+                        
+                        if (this.jacketMeshes.length === 0) {
+                            throw new Error('No jacket meshes found');
                         }
 
-                        console.log('Found jacket mesh:', this.jacketMesh.name, this.jacketMesh.type);
-
-                        // ✅ CRITICAL: Force mesh to be visible and solid
-                        this.jacketMesh.visible = true;
-                        this.jacketMesh.frustumCulled = false; // Always render
-                        
-                        if (this.jacketMesh.material) {
-                            if (Array.isArray(this.jacketMesh.material)) {
-                                this.jacketMesh.material.forEach(mat => {
-                                    mat.wireframe = false;
-                                    mat.visible = true;
-                                    mat.side = THREE.DoubleSide;
-                                });
-                            } else {
-                                this.jacketMesh.material.wireframe = false;
-                                this.jacketMesh.material.visible = true;
-                                this.jacketMesh.material.side = THREE.DoubleSide;
-                            }
-                        }
+                        console.log(`✅ Found ${this.jacketMeshes.length} jacket mesh(es)`);
 
                         // Optimize geometry
-                        this.optimizeGeometry(this.jacketMesh);
+                        this.optimizeAllMeshes();
 
                         // Find skeleton
                         this.jacketSkeleton = this.findSkeleton(this.jacketModel);
-                        
                         if (this.jacketSkeleton) {
-                            console.log('Skeleton found with', this.jacketSkeleton.bones.length, 'bones (HIDDEN)');
+                            console.log(`Skeleton: ${this.jacketSkeleton.bones.length} bones (hidden)`);
                         }
 
-                        // Apply initial transforms
+                        // Apply transforms
                         this.jacketModel.scale.set(
                             CONFIG.JACKET.SCALE,
                             CONFIG.JACKET.SCALE,
                             CONFIG.JACKET.SCALE
                         );
-                        
                         this.jacketModel.position.set(
                             CONFIG.JACKET.POSITION.x,
                             CONFIG.JACKET.POSITION.y,
                             CONFIG.JACKET.POSITION.z
                         );
-                        
                         this.jacketModel.rotation.set(
                             CONFIG.JACKET.ROTATION.x,
                             CONFIG.JACKET.ROTATION.y,
                             CONFIG.JACKET.ROTATION.z
                         );
 
-                        // Initially hide entire model
+                        // Hide initially
                         this.jacketModel.visible = false;
 
                         // Add to scene
                         sceneManager.add(this.jacketModel);
                         
                         this.isLoaded = true;
-                        console.log('✅ Jacket loaded - Mesh visible, Bones hidden');
+                        console.log('✅ Jacket loaded successfully');
                         
                         resolve(this.jacketModel);
 
@@ -124,196 +102,159 @@ class ModelLoader {
         });
     }
 
-    /**
-     * ✅ CRITICAL FIX: Hide ALL bones completely
-     */
-    hideAllBones(object) {
+    analyzeModel(object) {
+        const meshes = [];
         object.traverse((child) => {
-            // Hide ANYTHING that is a bone
+            if (child.isMesh || child.isSkinnedMesh) {
+                meshes.push({
+                    name: child.name,
+                    verts: child.geometry?.attributes?.position?.count || 0
+                });
+            }
+        });
+        
+        console.log(`Meshes: ${meshes.length}`);
+        meshes.forEach(m => {
+            console.log(`  - "${m.name}": ${m.verts.toLocaleString()} vertices`);
+        });
+    }
+
+    hideBodyAndBones(object) {
+        object.traverse((child) => {
+            // Hide bones
             if (child.type === 'Bone') {
                 child.visible = false;
-                
-                // Also remove from rendering
-                if (child.material) {
-                    child.material.visible = false;
-                }
-                
-                console.log('🚫 Hidden bone:', child.name);
             }
             
-            // Force meshes to be visible
+            // Hide body meshes
             if (child.isMesh || child.isSkinnedMesh) {
-                child.visible = true;
-                console.log('✅ Showing mesh:', child.name);
+                const name = child.name.toLowerCase();
+                const bodyKeywords = ['body', 'man', 'male', 'person', 'skin', 'head', 'face'];
+                
+                if (bodyKeywords.some(kw => name.includes(kw))) {
+                    child.visible = false;
+                    this.bodyMeshes.push(child);
+                    console.log('🚫 Hidden:', child.name);
+                }
             }
         });
     }
 
-    /**
-     * ✅ Optimize geometry for better performance
-     */
-    optimizeGeometry(mesh) {
-        if (!mesh.geometry) return;
-
-        const geometry = mesh.geometry;
-        
-        // Compute bounding sphere for frustum culling
-        geometry.computeBoundingSphere();
-        geometry.computeBoundingBox();
-
-        // ✅ Simplify material
-        if (mesh.material) {
-            if (Array.isArray(mesh.material)) {
-                mesh.material.forEach(mat => this.optimizeMaterial(mat));
-            } else {
-                this.optimizeMaterial(mesh.material);
-            }
-        }
-
-        console.log(`Geometry optimized: ${geometry.attributes.position.count} vertices`);
-    }
-
-    /**
-     * ✅ Optimize material settings
-     */
-    optimizeMaterial(material) {
-        material.flatShading = false;
-        material.wireframe = false; // ✅ NEVER wireframe
-        material.precision = 'mediump';
-        material.shadowSide = THREE.FrontSide;
-    }
-
-    /**
-     * Find the main mesh (prioritize SkinnedMesh)
-     */
-    findMesh(object) {
-        let skinnedMesh = null;
-        let regularMesh = null;
+    findJacketMeshes(object) {
+        this.jacketMeshes = [];
         
         object.traverse((child) => {
-            if (child.isSkinnedMesh && !skinnedMesh) {
-                skinnedMesh = child;
-            } else if (child.isMesh && !child.isSkinnedMesh && !regularMesh) {
-                regularMesh = child;
+            if (child.type === 'Bone') return;
+            
+            if ((child.isMesh || child.isSkinnedMesh) && !this.bodyMeshes.includes(child)) {
+                this.jacketMeshes.push(child);
+                child.visible = true;
+                child.frustumCulled = false;
+                console.log('✅ Jacket mesh:', child.name);
             }
         });
-        
-        return skinnedMesh || regularMesh;
     }
 
-    /**
-     * Find skeleton
-     */
+    optimizeAllMeshes() {
+        this.jacketMeshes.forEach(mesh => {
+            const geo = mesh.geometry;
+            if (!geo) return;
+            
+            const vertCount = geo.attributes.position.count;
+            console.log(`Optimizing: ${vertCount.toLocaleString()} verts`);
+            
+            // Decimate if too many vertices
+            if (vertCount > 100000) {
+                const factor = Math.ceil(vertCount / 50000);
+                this.decimateGeometry(geo, factor);
+                console.log(`  Decimated to: ${geo.attributes.position.count.toLocaleString()}`);
+            }
+            
+            geo.computeBoundingSphere();
+            
+            // Optimize material
+            if (mesh.material) {
+                const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+                mats.forEach(mat => {
+                    mat.precision = 'lowp';
+                    mat.wireframe = false;
+                });
+            }
+        });
+    }
+
+    decimateGeometry(geometry, factor) {
+        const pos = geometry.attributes.position.array;
+        const newPos = [];
+        const vertCount = pos.length / 3;
+        
+        for (let i = 0; i < vertCount; i += factor) {
+            newPos.push(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]);
+        }
+        
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(newPos, 3));
+        geometry.computeVertexNormals();
+    }
+
     findSkeleton(object) {
         let skeleton = null;
-        
         object.traverse((child) => {
             if (child.isSkinnedMesh && child.skeleton) {
                 skeleton = child.skeleton;
             }
         });
-        
         return skeleton;
     }
 
-    /**
-     * Get all bones
-     */
-    getBones() {
-        if (!this.jacketSkeleton) return [];
-        return this.jacketSkeleton.bones;
+    getMeshes() {
+        return this.jacketMeshes;
     }
 
-    /**
-     * Find bone by name
-     */
-    findBone(name) {
-        if (!this.jacketSkeleton) return null;
-        
-        return this.jacketSkeleton.bones.find(bone => 
-            bone.name.toLowerCase().includes(name.toLowerCase())
-        );
+    getMesh() {
+        return this.jacketMeshes[0] || null;
     }
 
-    /**
-     * Show/hide jacket
-     */
     setVisible(visible) {
         if (this.jacketModel) {
-            this.jacketModel.visible = visible;
-            
-            // ✅ CRITICAL: Ensure mesh stays visible when showing
-            if (visible && this.jacketMesh) {
-                this.jacketMesh.visible = true;
-                
-                // Double-check bones are still hidden
-                this.jacketModel.traverse((child) => {
-                    if (child.type === 'Bone') {
-                        child.visible = false;
-                    }
-                });
-            }
+            this.jacketMeshes.forEach(mesh => {
+                mesh.visible = visible;
+            });
+            this.bodyMeshes.forEach(mesh => {
+                mesh.visible = false;
+            });
         }
     }
 
-    /**
-     * Update jacket position
-     */
     setPosition(x, y, z) {
         if (this.jacketModel) {
             this.jacketModel.position.set(x, y, z);
         }
     }
 
-    /**
-     * Update jacket rotation
-     */
     setRotation(x, y, z) {
         if (this.jacketModel) {
             this.jacketModel.rotation.set(x, y, z);
         }
     }
 
-    /**
-     * Update jacket scale
-     */
     setScale(scale) {
         if (this.jacketModel) {
             this.jacketModel.scale.set(scale, scale, scale);
         }
     }
 
-    /**
-     * Get jacket mesh
-     */
-    getMesh() {
-        return this.jacketMesh;
-    }
-
-    /**
-     * Get jacket model
-     */
     getModel() {
         return this.jacketModel;
     }
 
-    /**
-     * Get skeleton
-     */
     getSkeleton() {
         return this.jacketSkeleton;
     }
 
-    /**
-     * Check if loaded
-     */
     isModelLoaded() {
         return this.isLoaded;
     }
 
-    /**
-     * Load texture
-     */
     async loadTexture(url) {
         return new Promise((resolve, reject) => {
             this.textureLoader.load(
@@ -329,23 +270,17 @@ class ModelLoader {
         });
     }
 
-    /**
-     * Dispose resources
-     */
     dispose() {
         if (this.jacketModel) {
             this.jacketModel.traverse((child) => {
-                if (child.geometry) {
-                    child.geometry.dispose();
-                }
+                if (child.geometry) child.geometry.dispose();
                 if (child.material) {
-                    if (Array.isArray(child.material)) {
-                        child.material.forEach(material => {
-                            this.disposeMaterial(material);
-                        });
-                    } else {
-                        this.disposeMaterial(child.material);
-                    }
+                    const mats = Array.isArray(child.material) ? child.material : [child.material];
+                    mats.forEach(mat => {
+                        if (mat.map) mat.map.dispose();
+                        if (mat.normalMap) mat.normalMap.dispose();
+                        mat.dispose();
+                    });
                 }
             });
             
@@ -353,24 +288,11 @@ class ModelLoader {
             this.jacketModel = null;
         }
         
-        this.jacketMesh = null;
+        this.jacketMeshes = [];
+        this.bodyMeshes = [];
         this.jacketSkeleton = null;
         this.isLoaded = false;
-        console.log('Model disposed');
-    }
-
-    /**
-     * Dispose material
-     */
-    disposeMaterial(material) {
-        if (material.map) material.map.dispose();
-        if (material.normalMap) material.normalMap.dispose();
-        if (material.roughnessMap) material.roughnessMap.dispose();
-        if (material.metalnessMap) material.metalnessMap.dispose();
-        if (material.aoMap) material.aoMap.dispose();
-        material.dispose();
     }
 }
 
-// Create global instance
 const modelLoader = new ModelLoader();
