@@ -1,4 +1,4 @@
-// Composite Renderer - PERFORMANCE OPTIMIZED
+// Composite Renderer - FIXED - Video background now visible
 
 class CompositeRenderer {
     constructor() {
@@ -80,10 +80,10 @@ class CompositeRenderer {
         this.videoPlane = new THREE.Mesh(geometry, material);
         this.videoPlane.position.z = -10;
         this.videoPlane.renderOrder = -1000;
-        this.videoPlane.visible = false; // Using HTML video instead
+        this.videoPlane.visible = true; // ✅ FIXED: Now visible!
         
         sceneManager.add(this.videoPlane);
-        console.log('✓ Video background ready');
+        console.log('✓ Video background ready and VISIBLE');
     }
 
     start() {
