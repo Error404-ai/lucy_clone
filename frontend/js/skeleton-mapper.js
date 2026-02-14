@@ -1,109 +1,5 @@
-// Enhanced Skeleton Mapper - Production-Grade Pose Tracking
-// Maps MediaPipe pose to 3D jacket with precision and stability
-
-class KalmanFilter {
-    /**
-     * 1D Kalman filter for smooth tracking
-     */
-    constructor(processNoise = 0.001, measurementNoise = 0.1) {
-        this.x = 0;  // estimated state
-        this.P = 1;  // estimation error covariance
-        this.Q = processNoise;  // process noise
-        this.R = measurementNoise;  // measurement noise
-    }
-    
-    update(measurement) {
-        // Prediction step
-        const P_pred = this.P + this.Q;
-        
-        // Update step
-        const K = P_pred / (P_pred + this.R);
-        this.x = this.x + K * (measurement - this.x);
-        this.P = (1 - K) * P_pred;
-        
-        return this.x;
-    }
-    
-    reset() {
-        this.x = 0;
-        this.P = 1;
-    }
-}
-
-class BodyMeasurements {
-    /**
-     * Extract body measurements from pose landmarks
-     */
-    constructor() {
-        this.measurements = {
-            shoulderWidth: 0,
-            torsoLength: 0,
-            armLength: 0,
-            chestWidth: 0,
-            hipWidth: 0
-        };
-    }
-    
-    extract(landmarks) {
-        if (!landmarks || landmarks.length < 33) return null;
-        
-        const L = CONFIG.SKELETON.LANDMARKS;
-        
-        // Shoulder width
-        this.measurements.shoulderWidth = this.distance3D(
-            landmarks[L.LEFT_SHOULDER],
-            landmarks[L.RIGHT_SHOULDER]
-        );
-        
-        // Torso length (shoulder to hip center)
-        const shoulderCenter = this.midpoint(
-            landmarks[L.LEFT_SHOULDER],
-            landmarks[L.RIGHT_SHOULDER]
-        );
-        const hipCenter = this.midpoint(
-            landmarks[L.LEFT_HIP],
-            landmarks[L.RIGHT_HIP]
-        );
-        this.measurements.torsoLength = this.distance3D(shoulderCenter, hipCenter);
-        
-        // Arm length (shoulder to wrist)
-        const leftArmLength = 
-            this.distance3D(landmarks[L.LEFT_SHOULDER], landmarks[L.LEFT_ELBOW]) +
-            this.distance3D(landmarks[L.LEFT_ELBOW], landmarks[L.LEFT_WRIST]);
-        const rightArmLength =
-            this.distance3D(landmarks[L.RIGHT_SHOULDER], landmarks[L.RIGHT_ELBOW]) +
-            this.distance3D(landmarks[L.RIGHT_ELBOW], landmarks[L.RIGHT_WRIST]);
-        this.measurements.armLength = (leftArmLength + rightArmLength) / 2;
-        
-        // Chest width (approximation from shoulders and elbow positions)
-        this.measurements.chestWidth = this.measurements.shoulderWidth * 1.1;
-        
-        // Hip width
-        this.measurements.hipWidth = this.distance3D(
-            landmarks[L.LEFT_HIP],
-            landmarks[L.RIGHT_HIP]
-        );
-        
-        return this.measurements;
-    }
-    
-    distance3D(p1, p2) {
-        if (!p1 || !p2) return 0;
-        const dx = p2.x - p1.x;
-        const dy = p2.y - p1.y;
-        const dz = (p2.z || 0) - (p1.z || 0);
-        return Math.sqrt(dx * dx + dy * dy + dz * dz);
-    }
-    
-    midpoint(p1, p2) {
-        if (!p1 || !p2) return { x: 0, y: 0, z: 0 };
-        return {
-            x: (p1.x + p2.x) / 2,
-            y: (p1.y + p2.y) / 2,
-            z: ((p1.z || 0) + (p2.z || 0)) / 2
-        };
-    }
-}
+// Enhanced Skeleton Mapper - Maps MediaPipe pose to jacket shoulders
+// FIXED: Proper shoulder alignment and scaling
 
 class EnhancedSkeletonMapper {
     constructor() {
@@ -112,81 +8,55 @@ class EnhancedSkeletonMapper {
         this.initialized = false;
         this.lastPose = null;
         
-        // Body measurements
-        this.bodyMeasurements = new BodyMeasurements();
-        this.currentMeasurements = null;
-        
-        // Kalman filters for smooth tracking
-        this.filters = {
-            posX: new KalmanFilter(0.001, 0.05),
-            posY: new KalmanFilter(0.001, 0.05),
-            posZ: new KalmanFilter(0.001, 0.1),
-            rotX: new KalmanFilter(0.001, 0.1),
-            rotY: new KalmanFilter(0.001, 0.1),
-            rotZ: new KalmanFilter(0.001, 0.1),
-            scale: new KalmanFilter(0.001, 0.05)
+        // Smoothing buffers
+        this.smoothBuffer = {
+            position: { x: 0, y: 0, z: 0 },
+            rotation: { x: 0, y: 0, z: 0 },
+            scale: 1
         };
         
-        // Confidence tracking
-        this.confidenceHistory = [];
-        this.confidenceHistorySize = 10;
-        this.minConfidence = 0.7;
-        
-        // Performance optimization
-        this.lastUpdateTime = 0;
-        this.updateInterval = 1000 / 60; // 60 FPS max
-        
-        // Enhanced calibration
+        // ✅ FIXED: Calibration for proper shoulder mapping
         this.calibration = {
-            scaleMultiplier: 18.0,
-            depthMultiplier: -8.0,
-            verticalOffset: -0.5,
+            // Scale: shoulder width to jacket size
+            scaleMultiplier: 12.0, // ✅ Adjusted for better fit
+            
+            // Depth positioning
+            depthOffset: -2.0, // ✅ Bring jacket closer to camera
+            depthMultiplier: 4.0,
+            
+            // Vertical alignment
+            verticalOffset: -0.3, // ✅ Align to shoulders (not torso)
+            
+            // Horizontal centering
             horizontalOffset: 0.0,
             
-            // Regional scale factors
-            shoulderScale: 1.15,
-            chestScale: 1.1,
-            waistScale: 1.0,
-            hipScale: 0.95
+            // Smoothing factor
+            smoothingAlpha: 0.3 // Higher = more responsive, lower = smoother
         };
         
         // Tracking state
         this.isTracking = false;
-        this.trackingQuality = 0;
+        this.confidenceHistory = [];
+        this.minConfidence = 0.6;
     }
 
-    /**
-     * Initialize the mapper
-     */
     init(width, height) {
         this.width = width;
         this.height = height;
         this.initialized = true;
-        console.log("✅ EnhancedSkeletonMapper initialized:", width, "x", height);
+        console.log("✅ Skeleton Mapper initialized:", width, "x", height);
     }
 
-    /**
-     * Main update loop - enhanced with multi-point tracking
-     */
     update(poseData) {
         if (!this.initialized || !poseData) return;
-
-        // Throttle updates for performance
-        const now = performance.now();
-        if (now - this.lastUpdateTime < this.updateInterval) return;
-        this.lastUpdateTime = now;
 
         const landmarks = poseData.landmarks;
         if (!landmarks || landmarks.length < 33) return;
 
-        // Calculate pose confidence
+        // Check confidence
         const confidence = this.calculateConfidence(landmarks);
-        this.updateConfidenceHistory(confidence);
-        
-        // Only update if confidence is sufficient
-        if (this.getAverageConfidence() < this.minConfidence) {
-            console.warn(`Low pose confidence: ${confidence.toFixed(2)}`);
-            this.handleLowConfidence();
+        if (confidence < this.minConfidence) {
+            console.warn(`Low confidence: ${confidence.toFixed(2)}`);
             return;
         }
 
@@ -194,162 +64,149 @@ class EnhancedSkeletonMapper {
         if (!jacket) return;
 
         try {
-            // Extract body measurements
-            this.currentMeasurements = this.bodyMeasurements.extract(landmarks);
-            
-            // Calculate transformations with multi-point tracking
-            const position = this.calculateEnhancedPosition(landmarks);
-            const rotation = this.calculateEnhancedRotation(landmarks);
-            const scale = this.calculateEnhancedScale(landmarks);
+            // ✅ Calculate transformations based on SHOULDERS
+            const position = this.calculateShoulderPosition(landmarks);
+            const rotation = this.calculateBodyRotation(landmarks);
+            const scale = this.calculateShoulderScale(landmarks);
 
-            // Apply Kalman smoothing
-            const smoothedPosition = this.applyKalmanSmoothing(position, 'pos');
-            const smoothedRotation = this.applyKalmanSmoothing(rotation, 'rot');
-            const smoothedScale = this.filters.scale.update(scale);
+            // Apply smoothing
+            const smoothPos = this.applySmoothing(position, 'position');
+            const smoothRot = this.applySmoothing(rotation, 'rotation');
+            const smoothScale = this.applySmoothing({ x: scale, y: scale, z: scale }, 'scale').x;
 
             // Apply to jacket
-            jacket.position.set(smoothedPosition.x, smoothedPosition.y, smoothedPosition.z);
-            jacket.rotation.set(smoothedRotation.x, smoothedRotation.y, smoothedRotation.z);
-            jacket.scale.set(smoothedScale, smoothedScale, smoothedScale);
+            jacket.position.set(smoothPos.x, smoothPos.y, smoothPos.z);
+            jacket.rotation.set(smoothRot.x, smoothRot.y, smoothRot.z);
+            jacket.scale.set(smoothScale, smoothScale, smoothScale);
 
-            // Update tracking state
+            // Show jacket
             this.isTracking = true;
-            this.trackingQuality = confidence;
-
-            // Auto-show jacket on first successful tracking
             if (!jacket.visible) {
                 jacket.visible = true;
-                console.log('✅ Jacket visible - tracking active');
+                console.log('✅ Jacket visible - tracking shoulders');
             }
 
             this.lastPose = poseData;
 
         } catch (error) {
-            console.error('Error in skeleton update:', error);
-            this.handleUpdateError();
+            console.error('Skeleton update error:', error);
         }
     }
 
     /**
-     * Enhanced position calculation with torso center tracking
+     * ✅ FIXED: Calculate position based on SHOULDER CENTER
      */
-    calculateEnhancedPosition(landmarks) {
+    calculateShoulderPosition(landmarks) {
         const L = CONFIG.SKELETON.LANDMARKS;
         
-        // Get key points
         const leftShoulder = landmarks[L.LEFT_SHOULDER];
         const rightShoulder = landmarks[L.RIGHT_SHOULDER];
-        const leftHip = landmarks[L.LEFT_HIP];
-        const rightHip = landmarks[L.RIGHT_HIP];
-        const nose = landmarks[L.NOSE];
         
-        // Calculate centers
-        const shoulderCenter = this.midpoint(leftShoulder, rightShoulder);
-        const hipCenter = this.midpoint(leftHip, rightHip);
-        
-        // Torso center for stable positioning
-        const torsoCenter = {
-            x: (shoulderCenter.x + hipCenter.x) / 2,
-            y: (shoulderCenter.y + hipCenter.y) / 2,
-            z: (shoulderCenter.z + hipCenter.z) / 2
+        if (!leftShoulder || !rightShoulder) {
+            return { x: 0, y: 0, z: 0 };
+        }
+
+        // Calculate shoulder center
+        const shoulderCenter = {
+            x: (leftShoulder.x + rightShoulder.x) / 2,
+            y: (leftShoulder.y + rightShoulder.y) / 2,
+            z: (leftShoulder.z + rightShoulder.z) / 2
         };
-        
-        // Enhanced depth estimation using multiple reference points
-        const avgDepth = (leftShoulder.z + rightShoulder.z + nose.z) / 3;
-        const depthOffset = this.calibration.depthMultiplier + (avgDepth * 4);
-        
+
+        // Get nose for depth reference
+        const nose = landmarks[L.NOSE];
+        const avgDepth = nose ? (leftShoulder.z + rightShoulder.z + nose.z) / 3 : shoulderCenter.z;
+
         // Map to world coordinates
-        const x = (torsoCenter.x - 0.5) * 12 + this.calibration.horizontalOffset;
-        const y = -(torsoCenter.y - 0.5) * 12 + this.calibration.verticalOffset;
-        const z = depthOffset;
+        const x = (shoulderCenter.x - 0.5) * 10 + this.calibration.horizontalOffset;
+        const y = -(shoulderCenter.y - 0.5) * 10 + this.calibration.verticalOffset;
+        const z = this.calibration.depthOffset + (avgDepth * this.calibration.depthMultiplier);
 
         return { x, y, z };
     }
 
     /**
-     * Enhanced rotation calculation with pitch/yaw/roll
+     * ✅ Calculate rotation from shoulder orientation
      */
-    calculateEnhancedRotation(landmarks) {
+    calculateBodyRotation(landmarks) {
         const L = CONFIG.SKELETON.LANDMARKS;
         
         const leftShoulder = landmarks[L.LEFT_SHOULDER];
         const rightShoulder = landmarks[L.RIGHT_SHOULDER];
-        const nose = landmarks[L.NOSE];
-        const leftHip = landmarks[L.LEFT_HIP];
-        const rightHip = landmarks[L.RIGHT_HIP];
         
+        if (!leftShoulder || !rightShoulder) {
+            return { x: Math.PI, y: Math.PI, z: 0 };
+        }
+
         // Roll (shoulder tilt)
         const dx = rightShoulder.x - leftShoulder.x;
         const dy = rightShoulder.y - leftShoulder.y;
         const rollAngle = Math.atan2(dy, dx);
         
-        // Yaw (left/right turn) - enhanced with shoulder depth
+        // Yaw (turning left/right)
         const shoulderWidth = Math.sqrt(dx * dx + dy * dy);
         const depthDiff = rightShoulder.z - leftShoulder.z;
-        const yawAngle = Math.atan2(depthDiff, shoulderWidth) * 1.8;
-        
-        // Pitch (looking up/down) - using nose and torso relationship
-        const shoulderCenter = this.midpoint(leftShoulder, rightShoulder);
-        const hipCenter = this.midpoint(leftHip, rightHip);
-        const torsoCenter = this.midpoint(shoulderCenter, hipCenter);
-        const pitchAngle = (nose.y - torsoCenter.y) * 0.5;
+        const yawAngle = Math.atan2(depthDiff, shoulderWidth) * 1.5;
         
         return {
-            x: Math.PI + pitchAngle,
+            x: Math.PI,
             y: Math.PI + yawAngle,
             z: -rollAngle
         };
     }
 
     /**
-     * Enhanced scale calculation with body measurements
+     * ✅ FIXED: Calculate scale based on SHOULDER WIDTH
      */
-    calculateEnhancedScale(landmarks) {
+    calculateShoulderScale(landmarks) {
         const L = CONFIG.SKELETON.LANDMARKS;
         
-        // Primary: shoulder width
-        const shoulderWidth = this.distance3D(
-            landmarks[L.LEFT_SHOULDER],
-            landmarks[L.RIGHT_SHOULDER]
-        );
+        const leftShoulder = landmarks[L.LEFT_SHOULDER];
+        const rightShoulder = landmarks[L.RIGHT_SHOULDER];
         
-        // Secondary: torso length for aspect ratio
-        const shoulderCenter = this.midpoint(
-            landmarks[L.LEFT_SHOULDER],
-            landmarks[L.RIGHT_SHOULDER]
-        );
-        const hipCenter = this.midpoint(
-            landmarks[L.LEFT_HIP],
-            landmarks[L.RIGHT_HIP]
-        );
-        const torsoLength = this.distance3D(shoulderCenter, hipCenter);
-        
-        // Base scale from shoulder width
-        let scale = shoulderWidth * this.calibration.scaleMultiplier;
-        
-        // Adjust based on torso proportions
-        const torsoRatio = torsoLength / shoulderWidth;
-        if (torsoRatio > 1.5) {
-            scale *= 1.1; // Taller torso = slightly larger jacket
-        } else if (torsoRatio < 1.0) {
-            scale *= 0.95; // Shorter torso = slightly smaller jacket
+        if (!leftShoulder || !rightShoulder) {
+            return 1.0;
         }
-        
+
+        // Calculate shoulder width
+        const dx = rightShoulder.x - leftShoulder.x;
+        const dy = rightShoulder.y - leftShoulder.y;
+        const dz = rightShoulder.z - leftShoulder.z;
+        const shoulderWidth = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+        // Scale based on shoulder width
+        let scale = shoulderWidth * this.calibration.scaleMultiplier;
+
         // Clamp to reasonable range
-        return Utils.clamp(scale, 3.0, 15.0);
+        return Utils.clamp(scale, 4.0, 12.0);
     }
 
     /**
-     * Calculate pose confidence from landmark visibilities
+     * Apply exponential smoothing
+     */
+    applySmoothing(current, key) {
+        const alpha = this.calibration.smoothingAlpha;
+        const prev = this.smoothBuffer[key];
+
+        const smoothed = {
+            x: Utils.ema(current.x, prev.x, alpha),
+            y: Utils.ema(current.y, prev.y, alpha),
+            z: Utils.ema(current.z, prev.z, alpha)
+        };
+
+        this.smoothBuffer[key] = smoothed;
+        return smoothed;
+    }
+
+    /**
+     * Calculate pose confidence
      */
     calculateConfidence(landmarks) {
         const L = CONFIG.SKELETON.LANDMARKS;
         
-        // Key points for upper body tracking
         const keyPoints = [
             L.LEFT_SHOULDER, L.RIGHT_SHOULDER,
             L.LEFT_ELBOW, L.RIGHT_ELBOW,
-            L.LEFT_HIP, L.RIGHT_HIP,
             L.NOSE
         ];
         
@@ -364,198 +221,34 @@ class EnhancedSkeletonMapper {
             }
         });
         
-        if (validPoints === 0) return 0;
-        
-        const avgVisibility = totalVisibility / validPoints;
-        
-        // Bonus for frontal pose
-        const isFrontal = this.isFrontalPose(landmarks);
-        const frontalBonus = isFrontal ? 0.1 : 0;
-        
-        // Bonus for symmetry
-        const symmetryScore = this.calculateSymmetry(landmarks);
-        const symmetryBonus = symmetryScore * 0.05;
-        
-        return Utils.clamp(avgVisibility + frontalBonus + symmetryBonus, 0, 1);
+        return validPoints > 0 ? totalVisibility / validPoints : 0;
     }
 
     /**
-     * Check if pose is frontal (facing camera)
-     */
-    isFrontalPose(landmarks) {
-        const L = CONFIG.SKELETON.LANDMARKS;
-        
-        const leftShoulder = landmarks[L.LEFT_SHOULDER];
-        const rightShoulder = landmarks[L.RIGHT_SHOULDER];
-        
-        if (!leftShoulder || !rightShoulder) return false;
-        
-        // Check shoulder depth difference
-        const depthDiff = Math.abs(leftShoulder.z - rightShoulder.z);
-        
-        // Frontal if depth difference is small
-        return depthDiff < 0.15;
-    }
-
-    /**
-     * Calculate pose symmetry score
-     */
-    calculateSymmetry(landmarks) {
-        const L = CONFIG.SKELETON.LANDMARKS;
-        
-        // Compare left and right side visibilities
-        const pairs = [
-            [L.LEFT_SHOULDER, L.RIGHT_SHOULDER],
-            [L.LEFT_ELBOW, L.RIGHT_ELBOW],
-            [L.LEFT_HIP, L.RIGHT_HIP]
-        ];
-        
-        let symmetrySum = 0;
-        let validPairs = 0;
-        
-        pairs.forEach(([leftIdx, rightIdx]) => {
-            const left = landmarks[leftIdx];
-            const right = landmarks[rightIdx];
-            
-            if (left && right && left.visibility && right.visibility) {
-                const diff = Math.abs(left.visibility - right.visibility);
-                symmetrySum += (1 - diff);
-                validPairs++;
-            }
-        });
-        
-        return validPairs > 0 ? symmetrySum / validPairs : 0;
-    }
-
-    /**
-     * Update confidence history for smoothing
-     */
-    updateConfidenceHistory(confidence) {
-        this.confidenceHistory.push(confidence);
-        if (this.confidenceHistory.length > this.confidenceHistorySize) {
-            this.confidenceHistory.shift();
-        }
-    }
-
-    /**
-     * Get average confidence from recent history
-     */
-    getAverageConfidence() {
-        if (this.confidenceHistory.length === 0) return 0;
-        const sum = this.confidenceHistory.reduce((a, b) => a + b, 0);
-        return sum / this.confidenceHistory.length;
-    }
-
-    /**
-     * Apply Kalman filtering for smooth tracking
-     */
-    applyKalmanSmoothing(values, prefix) {
-        return {
-            x: this.filters[`${prefix}X`].update(values.x),
-            y: this.filters[`${prefix}Y`].update(values.y),
-            z: this.filters[`${prefix}Z`].update(values.z)
-        };
-    }
-
-    /**
-     * Handle low confidence situations
-     */
-    handleLowConfidence() {
-        // Don't hide immediately - maintain last good pose
-        if (this.isTracking) {
-            console.log('Maintaining last known pose due to low confidence');
-        }
-        
-        // If confidence has been low for extended period, hide jacket
-        const recentConfidence = this.confidenceHistory.slice(-5);
-        const avgRecentConfidence = recentConfidence.reduce((a, b) => a + b, 0) / recentConfidence.length;
-        
-        if (avgRecentConfidence < this.minConfidence * 0.5) {
-            this.hideJacket();
-            this.isTracking = false;
-        }
-    }
-
-    /**
-     * Handle update errors
-     */
-    handleUpdateError() {
-        console.error('Skeleton update failed - resetting tracking');
-        this.reset();
-    }
-
-    /**
-     * Helper: calculate 3D distance
-     */
-    distance3D(p1, p2) {
-        if (!p1 || !p2) return 0;
-        const dx = p2.x - p1.x;
-        const dy = p2.y - p1.y;
-        const dz = (p2.z || 0) - (p1.z || 0);
-        return Math.sqrt(dx * dx + dy * dy + dz * dz);
-    }
-
-    /**
-     * Helper: calculate midpoint
-     */
-    midpoint(p1, p2) {
-        if (!p1 || !p2) return { x: 0, y: 0, z: 0 };
-        return {
-            x: (p1.x + p2.x) / 2,
-            y: (p1.y + p2.y) / 2,
-            z: ((p1.z || 0) + (p2.z || 0)) / 2
-        };
-    }
-
-    /**
-     * Reset all tracking state
+     * Reset mapper state
      */
     reset() {
-        Object.values(this.filters).forEach(filter => filter.reset());
-        this.confidenceHistory = [];
+        this.smoothBuffer = {
+            position: { x: 0, y: 0, z: 0 },
+            rotation: { x: 0, y: 0, z: 0 },
+            scale: 1
+        };
         this.lastPose = null;
         this.isTracking = false;
-        this.trackingQuality = 0;
         console.log('Skeleton mapper reset');
     }
 
     /**
-     * Force show jacket
-     */
-    forceShowJacket() {
-        const jacket = modelLoader.getModel();
-        if (jacket) {
-            jacket.visible = true;
-            this.isTracking = true;
-            console.log('Jacket forced visible');
-        }
-    }
-
-    /**
-     * Hide jacket
-     */
-    hideJacket() {
-        const jacket = modelLoader.getModel();
-        if (jacket) {
-            jacket.visible = false;
-            console.log('Jacket hidden - low tracking quality');
-        }
-    }
-
-    /**
-     * Get current tracking status
+     * Get tracking status
      */
     getTrackingStatus() {
         return {
-            isTracking: this.isTracking,
-            quality: this.trackingQuality,
-            confidence: this.getAverageConfidence(),
-            measurements: this.currentMeasurements
+            isTracking: this.isTracking
         };
     }
 
     /**
-     * Update calibration parameters dynamically
+     * Update calibration
      */
     updateCalibration(params) {
         Object.assign(this.calibration, params);
@@ -563,5 +256,5 @@ class EnhancedSkeletonMapper {
     }
 }
 
-// Create global instance (replaces old skeletonMapper)
+// Create global instance
 const skeletonMapper = new EnhancedSkeletonMapper();

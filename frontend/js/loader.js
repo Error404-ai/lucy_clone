@@ -1,5 +1,5 @@
 // 3D Model loader for Lucy Virtual Try-On
-// COMPLETE FIX: Multi-mesh model support, body hiding, extreme performance optimization
+// FIXED: Proper jacket detection, no body hiding needed
 
 class ModelLoader {
     constructor() {
@@ -7,7 +7,6 @@ class ModelLoader {
         this.textureLoader = new THREE.TextureLoader();
         this.jacketModel = null;
         this.jacketMeshes = []; // Support multiple jacket meshes
-        this.bodyMeshes = []; // Track body meshes to hide
         this.jacketSkeleton = null;
         this.isLoaded = false;
         
@@ -33,14 +32,11 @@ class ModelLoader {
                     try {
                         this.jacketModel = gltf.scene;
                         
-                        // Analyze and categorize all meshes
+                        // Analyze model
                         console.log('=== ANALYZING MODEL ===');
                         this.analyzeModel(this.jacketModel);
                         
-                        // Hide body meshes and bones
-                        this.hideBodyAndBones(this.jacketModel);
-                        
-                        // Find jacket meshes
+                        // Find ALL meshes as jacket meshes (no body hiding needed)
                         this.findJacketMeshes(this.jacketModel);
                         
                         if (this.jacketMeshes.length === 0) {
@@ -55,7 +51,7 @@ class ModelLoader {
                         // Find skeleton
                         this.jacketSkeleton = this.findSkeleton(this.jacketModel);
                         if (this.jacketSkeleton) {
-                            console.log(`Skeleton: ${this.jacketSkeleton.bones.length} bones (hidden)`);
+                            console.log(`✓ Skeleton: ${this.jacketSkeleton.bones.length} bones`);
                         }
 
                         // Apply transforms
@@ -75,7 +71,7 @@ class ModelLoader {
                             CONFIG.JACKET.ROTATION.z
                         );
 
-                        // Hide initially
+                        // Hide initially until fabric is selected
                         this.jacketModel.visible = false;
 
                         // Add to scene
@@ -108,35 +104,15 @@ class ModelLoader {
             if (child.isMesh || child.isSkinnedMesh) {
                 meshes.push({
                     name: child.name,
+                    type: child.type,
                     verts: child.geometry?.attributes?.position?.count || 0
                 });
             }
         });
         
-        console.log(`Meshes: ${meshes.length}`);
+        console.log(`Total meshes: ${meshes.length}`);
         meshes.forEach(m => {
-            console.log(`  - "${m.name}": ${m.verts.toLocaleString()} vertices`);
-        });
-    }
-
-    hideBodyAndBones(object) {
-        object.traverse((child) => {
-            // Hide bones
-            if (child.type === 'Bone') {
-                child.visible = false;
-            }
-            
-            // Hide body meshes
-            if (child.isMesh || child.isSkinnedMesh) {
-                const name = child.name.toLowerCase();
-                const bodyKeywords = ['body', 'man', 'male', 'person', 'skin', 'head', 'face'];
-                
-                if (bodyKeywords.some(kw => name.includes(kw))) {
-                    child.visible = false;
-                    this.bodyMeshes.push(child);
-                    console.log('🚫 Hidden:', child.name);
-                }
-            }
+            console.log(`  - "${m.name}" (${m.type}): ${m.verts.toLocaleString()} vertices`);
         });
     }
 
@@ -144,9 +120,11 @@ class ModelLoader {
         this.jacketMeshes = [];
         
         object.traverse((child) => {
+            // Skip bones
             if (child.type === 'Bone') return;
             
-            if ((child.isMesh || child.isSkinnedMesh) && !this.bodyMeshes.includes(child)) {
+            // Accept ALL meshes as jacket meshes
+            if (child.isMesh || child.isSkinnedMesh) {
                 this.jacketMeshes.push(child);
                 child.visible = true;
                 child.frustumCulled = false;
@@ -161,11 +139,11 @@ class ModelLoader {
             if (!geo) return;
             
             const vertCount = geo.attributes.position.count;
-            console.log(`Optimizing: ${vertCount.toLocaleString()} verts`);
+            console.log(`Mesh: ${mesh.name} - ${vertCount.toLocaleString()} verts`);
             
-            // Decimate if too many vertices
-            if (vertCount > 100000) {
-                const factor = Math.ceil(vertCount / 50000);
+            // Only decimate if extremely high poly
+            if (vertCount > 50000) {
+                const factor = Math.ceil(vertCount / 25000);
                 this.decimateGeometry(geo, factor);
                 console.log(`  Decimated to: ${geo.attributes.position.count.toLocaleString()}`);
             }
@@ -176,7 +154,7 @@ class ModelLoader {
             if (mesh.material) {
                 const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
                 mats.forEach(mat => {
-                    mat.precision = 'lowp';
+                    mat.precision = 'mediump';
                     mat.wireframe = false;
                 });
             }
@@ -218,9 +196,6 @@ class ModelLoader {
         if (this.jacketModel) {
             this.jacketMeshes.forEach(mesh => {
                 mesh.visible = visible;
-            });
-            this.bodyMeshes.forEach(mesh => {
-                mesh.visible = false;
             });
         }
     }
@@ -289,7 +264,6 @@ class ModelLoader {
         }
         
         this.jacketMeshes = [];
-        this.bodyMeshes = [];
         this.jacketSkeleton = null;
         this.isLoaded = false;
     }

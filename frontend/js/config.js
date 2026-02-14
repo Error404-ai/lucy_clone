@@ -1,4 +1,4 @@
-// Configuration - OPTIMIZED for performance
+// Configuration - OPTIMIZED for performance and better camera view
 
 const CONFIG = {
     API: {
@@ -20,19 +20,20 @@ const CONFIG = {
         SHOW_INDICATOR: true
     },
 
-    // ✅ OPTIMIZED camera settings
+    // ✅ FIXED: Better camera settings for full body view
     CAMERA: {
-        WIDTH: 640,  // Reduced from 1280
-        HEIGHT: 480, // Reduced from 720
-        FRAME_RATE: 24, // Reduced from 30
+        WIDTH: 640,
+        HEIGHT: 480,
+        FRAME_RATE: 24,
         FACING_MODE: 'user'
     },
 
     SCENE: {
         BACKGROUND_COLOR: 0x000000,
-        CAMERA_FOV: 50,
+        CAMERA_FOV: 75, // ✅ INCREASED from 50 for wider view
         CAMERA_NEAR: 0.1,
         CAMERA_FAR: 2000,
+        CAMERA_DISTANCE: 8, // ✅ NEW: Move camera further back
         AMBIENT_LIGHT_INTENSITY: 0.4,
         DIRECTIONAL_LIGHT_INTENSITY: 0.5
     },
@@ -44,20 +45,21 @@ const CONFIG = {
         ROTATION: { x: 0, y: 0, z: 0 }
     },
 
-    // ✅ HEAVILY optimized pose tracking
+    // ✅ OPTIMIZED pose tracking
     POSE: {
-        MODEL_COMPLEXITY: 0, // Lite model
-        SMOOTH_LANDMARKS: false, // Disabled for performance
+        MODEL_COMPLEXITY: 0,
+        SMOOTH_LANDMARKS: false,
         SMOOTH_SEGMENTATION: false,
-        MIN_DETECTION_CONFIDENCE: 0.3, // Lowered
-        MIN_TRACKING_CONFIDENCE: 0.3,  // Lowered
+        MIN_DETECTION_CONFIDENCE: 0.3,
+        MIN_TRACKING_CONFIDENCE: 0.3,
         ENABLE_SEGMENTATION: false
     },
 
     SKELETON: {
-        SMOOTHING_FACTOR: 0.3, // Reduced smoothing
+        SMOOTHING_FACTOR: 0.3,
+        // ✅ FIXED: Better scale multipliers for proper jacket fit
         SCALE_MULTIPLIERS: {
-            SHOULDERS: 1.2,
+            SHOULDERS: 1.0,
             TORSO: 1.0,
             ARMS: 1.0
         },
@@ -77,7 +79,7 @@ const CONFIG = {
     },
 
     AI_PIPELINE: {
-        ENABLED: false, // Disabled for now
+        ENABLED: false,
         KEYFRAME_INTERVAL: 3000,
         MAX_BLEND_ALPHA: 0.7,
         BLEND_TRANSITION_DURATION: 500,
@@ -92,11 +94,11 @@ const CONFIG = {
         MAX_UPLOAD_SIZE: 10 * 1024 * 1024
     },
 
-    // ✅ EXTREME performance settings
+    // ✅ Performance settings
     PERFORMANCE: {
-        TARGET_FPS: 24, // Lowered from 30
-        LOW_PERFORMANCE_THRESHOLD: 15, // Lowered from 20
-        RENDER_SCALE: 0.5, // Aggressive reduction
+        TARGET_FPS: 24,
+        LOW_PERFORMANCE_THRESHOLD: 15,
+        RENDER_SCALE: 0.7, // ✅ IMPROVED from 0.5 for better quality
         ENABLE_STATS: true,
         ADAPTIVE_QUALITY: true
     },

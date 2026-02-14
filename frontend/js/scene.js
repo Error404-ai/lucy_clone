@@ -26,45 +26,41 @@ class SceneManager {
             
             // Create scene
             this.scene = new THREE.Scene();
-            // ✅ FIX: Remove black background for transparency
-            this.scene.background = null;
+            this.scene.background = null; // Transparent for overlay
 
-            // Create camera
+            // ✅ FIXED: Create camera with better positioning
             const viewWidth = this.canvas.clientWidth || window.innerWidth;
             const viewHeight = this.canvas.clientHeight || window.innerHeight;
             const aspect = viewWidth / viewHeight;
+            
             this.camera = new THREE.PerspectiveCamera(
-                CONFIG.SCENE.CAMERA_FOV,
+                CONFIG.SCENE.CAMERA_FOV, // Wider FOV for full body
                 aspect,
                 CONFIG.SCENE.CAMERA_NEAR,
                 CONFIG.SCENE.CAMERA_FAR
             );
-            this.camera.position.set(0, 0, 5);
+            
+            // ✅ FIXED: Position camera further back for full body view
+            this.camera.position.set(0, 0, CONFIG.SCENE.CAMERA_DISTANCE);
             this.camera.lookAt(0, 0, 0);
 
             // Create renderer
             this.renderer = new THREE.WebGLRenderer({
                 canvas: this.canvas,
                 antialias: true,
-                alpha: true, // ✅ Enable transparency
-                preserveDrawingBuffer: true // Required for screenshots
+                alpha: true,
+                preserveDrawingBuffer: true
             });
             
             this.renderer.setSize(viewWidth, viewHeight);
             this.renderer.setPixelRatio(window.devicePixelRatio * CONFIG.PERFORMANCE.RENDER_SCALE);
             
-            // ✅ FIX: Disable tone mapping to prevent color washing
+            // Rendering settings
             this.renderer.toneMapping = THREE.NoToneMapping;
             this.renderer.toneMappingExposure = 1.0;
-            
-            // ✅ Keep color encoding
             this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-            
-            // ✅ Disable physically correct lights (too bright for video overlay)
             this.renderer.physicallyCorrectLights = false;
-            
-            // ✅ Enable proper alpha blending
-            this.renderer.setClearColor(0x000000, 0); // Transparent black
+            this.renderer.setClearColor(0x000000, 0); // Transparent
 
             // Setup lighting
             this.setupLights();
@@ -79,7 +75,7 @@ class SceneManager {
             }
 
             this.isInitialized = true;
-            console.log('Scene initialized successfully');
+            console.log('✅ Scene initialized successfully');
 
         } catch (error) {
             console.error('Scene initialization failed:', error);
@@ -88,25 +84,25 @@ class SceneManager {
     }
 
     /**
-     * Setup scene lighting - REDUCED to prevent washing out video
+     * Setup scene lighting
      */
     setupLights() {
-        // ✅ Reduced ambient light (was 0.8, now 0.3)
-        this.lights.ambient = new THREE.AmbientLight(0xffffff, 0.3);
+        // Ambient light
+        this.lights.ambient = new THREE.AmbientLight(0xffffff, 0.4);
         this.scene.add(this.lights.ambient);
 
-        // ✅ Reduced directional light (was 0.6, now 0.4)
-        this.lights.directional = new THREE.DirectionalLight(0xffffff, 0.4);
+        // Directional light
+        this.lights.directional = new THREE.DirectionalLight(0xffffff, 0.5);
         this.lights.directional.position.set(2, 3, 2);
-        this.lights.directional.castShadow = false; // Disable for performance
+        this.lights.directional.castShadow = false;
         this.scene.add(this.lights.directional);
 
-        // ✅ Reduced hemisphere light (was 0.4, now 0.2)
-        this.lights.hemisphere = new THREE.HemisphereLight(0xffffff, 0x444444, 0.2);
+        // Hemisphere light
+        this.lights.hemisphere = new THREE.HemisphereLight(0xffffff, 0x444444, 0.3);
         this.lights.hemisphere.position.set(0, 20, 0);
         this.scene.add(this.lights.hemisphere);
 
-        console.log('Lighting setup complete (optimized for video overlay)');
+        console.log('✓ Lighting setup complete');
     }
 
     /**
@@ -133,7 +129,7 @@ class SceneManager {
         this.camera.aspect = aspect;
         this.camera.updateProjectionMatrix();
         
-        console.log(`Camera updated: ${videoWidth}x${videoHeight}, aspect: ${aspect}`);
+        console.log(`✓ Camera updated: ${videoWidth}x${videoHeight}, aspect: ${aspect.toFixed(2)}`);
     }
 
     /**
@@ -158,7 +154,6 @@ class SceneManager {
     render() {
         if (!this.isInitialized) return;
         
-        // Update orbit controls if enabled
         if (this.controls) {
             this.controls.update();
         }
@@ -192,13 +187,13 @@ class SceneManager {
      */
     updateLighting(intensity = 1.0) {
         if (this.lights.ambient) {
-            this.lights.ambient.intensity = 0.3 * intensity;
+            this.lights.ambient.intensity = 0.4 * intensity;
         }
         if (this.lights.directional) {
-            this.lights.directional.intensity = 0.4 * intensity;
+            this.lights.directional.intensity = 0.5 * intensity;
         }
         if (this.lights.hemisphere) {
-            this.lights.hemisphere.intensity = 0.2 * intensity;
+            this.lights.hemisphere.intensity = 0.3 * intensity;
         }
     }
 
@@ -220,7 +215,6 @@ class SceneManager {
             const object = this.scene.children[0];
             this.scene.remove(object);
             
-            // Dispose of geometries and materials
             if (object.geometry) object.geometry.dispose();
             if (object.material) {
                 if (Array.isArray(object.material)) {
