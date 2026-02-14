@@ -1,29 +1,27 @@
-// 3D Model loader for Lucy Virtual Try-On
-// FIXED: Proper jacket detection, no body hiding needed
+// 3D Model loader - CORRECTED with verbose logging and simplified detection
 
 class ModelLoader {
     constructor() {
         this.loader = new THREE.GLTFLoader();
         this.textureLoader = new THREE.TextureLoader();
         this.jacketModel = null;
-        this.jacketMeshes = []; // Support multiple jacket meshes
+        this.jacketMeshes = [];
         this.jacketSkeleton = null;
         this.isLoaded = false;
         
-        // Setup Meshopt decoder
         this.setupMeshoptDecoder();
     }
 
     setupMeshoptDecoder() {
         if (typeof MeshoptDecoder !== 'undefined') {
             this.loader.setMeshoptDecoder(MeshoptDecoder);
-            console.log('Meshopt decoder initialized');
+            console.log('✓ Meshopt decoder initialized');
         }
     }
 
     async loadJacket(modelPath = CONFIG.JACKET.MODEL_PATH) {
         return new Promise((resolve, reject) => {
-            console.log('Loading jacket model:', modelPath);
+            console.log('📦 Loading jacket model:', modelPath);
             Utils.updateLoadingText('Loading 3D jacket model...');
 
             this.loader.load(
@@ -32,26 +30,27 @@ class ModelLoader {
                     try {
                         this.jacketModel = gltf.scene;
                         
-                        // Analyze model
-                        console.log('=== ANALYZING MODEL ===');
+                        console.log('=== MODEL ANALYSIS ===');
                         this.analyzeModel(this.jacketModel);
                         
-                        // Find ALL meshes as jacket meshes (no body hiding needed)
+                        // Find ALL meshes as jacket meshes
                         this.findJacketMeshes(this.jacketModel);
                         
                         if (this.jacketMeshes.length === 0) {
-                            throw new Error('No jacket meshes found');
+                            throw new Error('❌ No meshes found in model');
                         }
 
                         console.log(`✅ Found ${this.jacketMeshes.length} jacket mesh(es)`);
 
-                        // Optimize geometry
+                        // Optimize
                         this.optimizeAllMeshes();
 
                         // Find skeleton
                         this.jacketSkeleton = this.findSkeleton(this.jacketModel);
                         if (this.jacketSkeleton) {
                             console.log(`✓ Skeleton: ${this.jacketSkeleton.bones.length} bones`);
+                        } else {
+                            console.log('⚠ No skeleton found (model may not be rigged)');
                         }
 
                         // Apply transforms
@@ -71,18 +70,21 @@ class ModelLoader {
                             CONFIG.JACKET.ROTATION.z
                         );
 
-                        // Hide initially until fabric is selected
+                        // ✅ Start HIDDEN (will be shown when fabric is selected)
                         this.jacketModel.visible = false;
+                        console.log('📍 Jacket initially hidden (will show when fabric selected)');
 
                         // Add to scene
                         sceneManager.add(this.jacketModel);
                         
                         this.isLoaded = true;
                         console.log('✅ Jacket loaded successfully');
+                        console.log('===================');
                         
                         resolve(this.jacketModel);
 
                     } catch (error) {
+                        console.error('❌ Error processing model:', error);
                         reject(error);
                     }
                 },
@@ -91,7 +93,7 @@ class ModelLoader {
                     Utils.updateLoadingText(`Loading jacket... ${percent}%`);
                 },
                 (error) => {
-                    console.error('Error loading jacket:', error);
+                    console.error('❌ Error loading jacket:', error);
                     reject(new Error(`Failed to load jacket: ${error.message}`));
                 }
             );
@@ -100,20 +102,30 @@ class ModelLoader {
 
     analyzeModel(object) {
         const meshes = [];
+        const bones = [];
+        
         object.traverse((child) => {
             if (child.isMesh || child.isSkinnedMesh) {
                 meshes.push({
                     name: child.name,
                     type: child.type,
-                    verts: child.geometry?.attributes?.position?.count || 0
+                    verts: child.geometry?.attributes?.position?.count || 0,
+                    visible: child.visible
                 });
+            }
+            if (child.type === 'Bone') {
+                bones.push(child.name);
             }
         });
         
-        console.log(`Total meshes: ${meshes.length}`);
-        meshes.forEach(m => {
-            console.log(`  - "${m.name}" (${m.type}): ${m.verts.toLocaleString()} vertices`);
+        console.log(`📊 Total meshes: ${meshes.length}`);
+        meshes.forEach((m, i) => {
+            console.log(`  ${i + 1}. "${m.name}" (${m.type}): ${m.verts.toLocaleString()} verts, visible: ${m.visible}`);
         });
+        
+        if (bones.length > 0) {
+            console.log(`🦴 Bones: ${bones.length} found`);
+        }
     }
 
     findJacketMeshes(object) {
@@ -123,29 +135,34 @@ class ModelLoader {
             // Skip bones
             if (child.type === 'Bone') return;
             
-            // Accept ALL meshes as jacket meshes
+            // ✅ Accept ALL meshes as jacket meshes
             if (child.isMesh || child.isSkinnedMesh) {
                 this.jacketMeshes.push(child);
-                child.visible = true;
-                child.frustumCulled = false;
-                console.log('✅ Jacket mesh:', child.name);
+                child.visible = true; // Ensure visible
+                child.frustumCulled = false; // Don't cull
+                console.log(`✅ Jacket mesh: "${child.name}"`);
             }
         });
+        
+        console.log(`📦 Total jacket meshes: ${this.jacketMeshes.length}`);
     }
 
     optimizeAllMeshes() {
-        this.jacketMeshes.forEach(mesh => {
+        console.log('🔧 Optimizing meshes...');
+        
+        this.jacketMeshes.forEach((mesh, i) => {
             const geo = mesh.geometry;
             if (!geo) return;
             
             const vertCount = geo.attributes.position.count;
-            console.log(`Mesh: ${mesh.name} - ${vertCount.toLocaleString()} verts`);
             
-            // Only decimate if extremely high poly
+            // Only decimate if very high poly
             if (vertCount > 50000) {
                 const factor = Math.ceil(vertCount / 25000);
                 this.decimateGeometry(geo, factor);
-                console.log(`  Decimated to: ${geo.attributes.position.count.toLocaleString()}`);
+                console.log(`  Mesh ${i + 1}: Decimated ${vertCount} → ${geo.attributes.position.count} verts`);
+            } else {
+                console.log(`  Mesh ${i + 1}: ${vertCount} verts (no decimation needed)`);
             }
             
             geo.computeBoundingSphere();
@@ -159,6 +176,8 @@ class ModelLoader {
                 });
             }
         });
+        
+        console.log('✓ Optimization complete');
     }
 
     decimateGeometry(geometry, factor) {
@@ -197,6 +216,7 @@ class ModelLoader {
             this.jacketMeshes.forEach(mesh => {
                 mesh.visible = visible;
             });
+            console.log(`👁 Jacket visibility set to: ${visible}`);
         }
     }
 

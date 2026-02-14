@@ -1,4 +1,4 @@
-// Configuration - OPTIMIZED for performance and better camera view
+// Configuration - CORRECTED for full body view
 
 const CONFIG = {
     API: {
@@ -20,7 +20,6 @@ const CONFIG = {
         SHOW_INDICATOR: true
     },
 
-    // ✅ FIXED: Better camera settings for full body view
     CAMERA: {
         WIDTH: 640,
         HEIGHT: 480,
@@ -30,22 +29,21 @@ const CONFIG = {
 
     SCENE: {
         BACKGROUND_COLOR: 0x000000,
-        CAMERA_FOV: 75, // ✅ INCREASED from 50 for wider view
+        CAMERA_FOV: 85, // ✅ MUCH WIDER (was 75, now 85)
         CAMERA_NEAR: 0.1,
         CAMERA_FAR: 2000,
-        CAMERA_DISTANCE: 8, // ✅ NEW: Move camera further back
-        AMBIENT_LIGHT_INTENSITY: 0.4,
-        DIRECTIONAL_LIGHT_INTENSITY: 0.5
+        CAMERA_DISTANCE: 12, // ✅ MUCH FURTHER back (was 8, now 12)
+        AMBIENT_LIGHT_INTENSITY: 0.6,
+        DIRECTIONAL_LIGHT_INTENSITY: 0.7
     },
 
     JACKET: {
         MODEL_PATH: 'assets/models/jacket.glb',
-        SCALE: 1.0,
+        SCALE: 1.5, // ✅ LARGER default scale
         POSITION: { x: 0, y: 0, z: 0 },
         ROTATION: { x: 0, y: 0, z: 0 }
     },
 
-    // ✅ OPTIMIZED pose tracking
     POSE: {
         MODEL_COMPLEXITY: 0,
         SMOOTH_LANDMARKS: false,
@@ -56,8 +54,7 @@ const CONFIG = {
     },
 
     SKELETON: {
-        SMOOTHING_FACTOR: 0.3,
-        // ✅ FIXED: Better scale multipliers for proper jacket fit
+        SMOOTHING_FACTOR: 0.2, // ✅ Less smoothing for more responsive
         SCALE_MULTIPLIERS: {
             SHOULDERS: 1.0,
             TORSO: 1.0,
@@ -94,11 +91,10 @@ const CONFIG = {
         MAX_UPLOAD_SIZE: 10 * 1024 * 1024
     },
 
-    // ✅ Performance settings
     PERFORMANCE: {
         TARGET_FPS: 24,
         LOW_PERFORMANCE_THRESHOLD: 15,
-        RENDER_SCALE: 0.7, // ✅ IMPROVED from 0.5 for better quality
+        RENDER_SCALE: 0.8, // ✅ Better quality
         ENABLE_STATS: true,
         ADAPTIVE_QUALITY: true
     },
@@ -114,7 +110,7 @@ const CONFIG = {
         SHOW_SKELETON_BONES: false,
         LOG_PERFORMANCE: true,
         ENABLE_ORBIT_CONTROLS: false,
-        VERBOSE: false
+        VERBOSE: true // ✅ Enable verbose logging
     }
 };
 

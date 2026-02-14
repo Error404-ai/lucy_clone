@@ -1,5 +1,4 @@
-// Enhanced Skeleton Mapper - Maps MediaPipe pose to jacket shoulders
-// FIXED: Proper shoulder alignment and scaling
+// Skeleton Mapper - CORRECTED with forced jacket visibility and better positioning
 
 class EnhancedSkeletonMapper {
     constructor() {
@@ -7,6 +6,7 @@ class EnhancedSkeletonMapper {
         this.height = 0;
         this.initialized = false;
         this.lastPose = null;
+        this.hasShownJacket = false;
         
         // Smoothing buffers
         this.smoothBuffer = {
@@ -15,29 +15,30 @@ class EnhancedSkeletonMapper {
             scale: 1
         };
         
-        // ✅ FIXED: Calibration for proper shoulder mapping
+        // ✅ CORRECTED: Much more aggressive calibration
         this.calibration = {
-            // Scale: shoulder width to jacket size
-            scaleMultiplier: 12.0, // ✅ Adjusted for better fit
+            // Scale based on shoulder width
+            scaleMultiplier: 16.0, // ✅ INCREASED from 12 to 16
             
-            // Depth positioning
-            depthOffset: -2.0, // ✅ Bring jacket closer to camera
-            depthMultiplier: 4.0,
+            // Depth positioning (bring closer)
+            depthOffset: -1.0, // ✅ MUCH closer (was -2.0)
+            depthMultiplier: 3.0, // ✅ Reduced
             
-            // Vertical alignment
-            verticalOffset: -0.3, // ✅ Align to shoulders (not torso)
+            // Vertical alignment (at shoulders)
+            verticalOffset: -0.8, // ✅ Raised up (was -0.3)
             
             // Horizontal centering
             horizontalOffset: 0.0,
             
-            // Smoothing factor
-            smoothingAlpha: 0.3 // Higher = more responsive, lower = smoother
+            // Smoothing
+            smoothingAlpha: 0.2
         };
         
         // Tracking state
         this.isTracking = false;
         this.confidenceHistory = [];
-        this.minConfidence = 0.6;
+        this.minConfidence = 0.4; // ✅ Lower threshold
+        this.updateCount = 0;
     }
 
     init(width, height) {
@@ -53,18 +54,39 @@ class EnhancedSkeletonMapper {
         const landmarks = poseData.landmarks;
         if (!landmarks || landmarks.length < 33) return;
 
-        // Check confidence
-        const confidence = this.calculateConfidence(landmarks);
-        if (confidence < this.minConfidence) {
-            console.warn(`Low confidence: ${confidence.toFixed(2)}`);
+        this.updateCount++;
+
+        // ✅ Get jacket immediately
+        const jacket = modelLoader.getModel();
+        if (!jacket) {
+            console.warn('Jacket model not loaded');
             return;
         }
 
-        const jacket = modelLoader.getModel();
-        if (!jacket) return;
+        // Check confidence
+        const confidence = this.calculateConfidence(landmarks);
+        this.confidenceHistory.push(confidence);
+        if (this.confidenceHistory.length > 30) {
+            this.confidenceHistory.shift();
+        }
+
+        // ✅ FORCE SHOW jacket after a few frames, regardless of confidence
+        if (!this.hasShownJacket && this.updateCount > 10) {
+            jacket.visible = true;
+            this.hasShownJacket = true;
+            console.log('🎯 FORCING jacket visible at update', this.updateCount);
+        }
+
+        // ✅ Continue updating even with lower confidence
+        if (confidence < this.minConfidence) {
+            if (this.updateCount % 30 === 0) {
+                console.warn(`Low confidence: ${confidence.toFixed(2)} (still updating)`);
+            }
+            // Don't return - keep updating position
+        }
 
         try {
-            // ✅ Calculate transformations based on SHOULDERS
+            // Calculate transformations
             const position = this.calculateShoulderPosition(landmarks);
             const rotation = this.calculateBodyRotation(landmarks);
             const scale = this.calculateShoulderScale(landmarks);
@@ -79,14 +101,19 @@ class EnhancedSkeletonMapper {
             jacket.rotation.set(smoothRot.x, smoothRot.y, smoothRot.z);
             jacket.scale.set(smoothScale, smoothScale, smoothScale);
 
-            // Show jacket
-            this.isTracking = true;
+            // Ensure visibility
             if (!jacket.visible) {
                 jacket.visible = true;
-                console.log('✅ Jacket visible - tracking shoulders');
+                console.log('✅ Jacket made visible');
             }
 
+            this.isTracking = true;
             this.lastPose = poseData;
+
+            // Log every 60 frames
+            if (this.updateCount % 60 === 0) {
+                console.log(`📊 Jacket pos: (${smoothPos.x.toFixed(2)}, ${smoothPos.y.toFixed(2)}, ${smoothPos.z.toFixed(2)}), scale: ${smoothScale.toFixed(2)}`);
+            }
 
         } catch (error) {
             console.error('Skeleton update error:', error);
@@ -94,7 +121,7 @@ class EnhancedSkeletonMapper {
     }
 
     /**
-     * ✅ FIXED: Calculate position based on SHOULDER CENTER
+     * ✅ Calculate position based on SHOULDER CENTER
      */
     calculateShoulderPosition(landmarks) {
         const L = CONFIG.SKELETON.LANDMARKS;
@@ -106,27 +133,27 @@ class EnhancedSkeletonMapper {
             return { x: 0, y: 0, z: 0 };
         }
 
-        // Calculate shoulder center
+        // Shoulder center
         const shoulderCenter = {
             x: (leftShoulder.x + rightShoulder.x) / 2,
             y: (leftShoulder.y + rightShoulder.y) / 2,
             z: (leftShoulder.z + rightShoulder.z) / 2
         };
 
-        // Get nose for depth reference
+        // Depth reference
         const nose = landmarks[L.NOSE];
         const avgDepth = nose ? (leftShoulder.z + rightShoulder.z + nose.z) / 3 : shoulderCenter.z;
 
-        // Map to world coordinates
-        const x = (shoulderCenter.x - 0.5) * 10 + this.calibration.horizontalOffset;
-        const y = -(shoulderCenter.y - 0.5) * 10 + this.calibration.verticalOffset;
+        // ✅ Map to world coordinates (wider multiplier)
+        const x = (shoulderCenter.x - 0.5) * 15 + this.calibration.horizontalOffset; // ✅ WIDER (was 10)
+        const y = -(shoulderCenter.y - 0.5) * 15 + this.calibration.verticalOffset; // ✅ WIDER (was 10)
         const z = this.calibration.depthOffset + (avgDepth * this.calibration.depthMultiplier);
 
         return { x, y, z };
     }
 
     /**
-     * ✅ Calculate rotation from shoulder orientation
+     * Calculate rotation from shoulder orientation
      */
     calculateBodyRotation(landmarks) {
         const L = CONFIG.SKELETON.LANDMARKS;
@@ -143,7 +170,7 @@ class EnhancedSkeletonMapper {
         const dy = rightShoulder.y - leftShoulder.y;
         const rollAngle = Math.atan2(dy, dx);
         
-        // Yaw (turning left/right)
+        // Yaw (turning)
         const shoulderWidth = Math.sqrt(dx * dx + dy * dy);
         const depthDiff = rightShoulder.z - leftShoulder.z;
         const yawAngle = Math.atan2(depthDiff, shoulderWidth) * 1.5;
@@ -156,7 +183,7 @@ class EnhancedSkeletonMapper {
     }
 
     /**
-     * ✅ FIXED: Calculate scale based on SHOULDER WIDTH
+     * ✅ Calculate scale based on SHOULDER WIDTH
      */
     calculateShoulderScale(landmarks) {
         const L = CONFIG.SKELETON.LANDMARKS;
@@ -177,8 +204,8 @@ class EnhancedSkeletonMapper {
         // Scale based on shoulder width
         let scale = shoulderWidth * this.calibration.scaleMultiplier;
 
-        // Clamp to reasonable range
-        return Utils.clamp(scale, 4.0, 12.0);
+        // ✅ WIDER clamp range
+        return Utils.clamp(scale, 5.0, 18.0); // ✅ Increased max from 12 to 18
     }
 
     /**
@@ -225,6 +252,18 @@ class EnhancedSkeletonMapper {
     }
 
     /**
+     * Force show jacket (call this from fabric selector)
+     */
+    forceShowJacket() {
+        const jacket = modelLoader.getModel();
+        if (jacket) {
+            jacket.visible = true;
+            this.hasShownJacket = true;
+            console.log('🎯 Jacket FORCED visible');
+        }
+    }
+
+    /**
      * Reset mapper state
      */
     reset() {
@@ -235,6 +274,8 @@ class EnhancedSkeletonMapper {
         };
         this.lastPose = null;
         this.isTracking = false;
+        this.hasShownJacket = false;
+        this.updateCount = 0;
         console.log('Skeleton mapper reset');
     }
 
@@ -243,7 +284,9 @@ class EnhancedSkeletonMapper {
      */
     getTrackingStatus() {
         return {
-            isTracking: this.isTracking
+            isTracking: this.isTracking,
+            hasShownJacket: this.hasShownJacket,
+            updateCount: this.updateCount
         };
     }
 
