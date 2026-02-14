@@ -1,4 +1,4 @@
-// Configuration - EMERGENCY EXTREME SETTINGS
+// Configuration - BALANCED for face + jacket visibility
 
 const CONFIG = {
     API: {
@@ -29,32 +29,32 @@ const CONFIG = {
 
     SCENE: {
         BACKGROUND_COLOR: 0x000000,
-        CAMERA_FOV: 90, // 🔴 EXTREME WIDE (was 85)
+        CAMERA_FOV: 75, // ✅ BALANCED
         CAMERA_NEAR: 0.1,
         CAMERA_FAR: 2000,
-        CAMERA_DISTANCE: 18, // 🔴 VERY FAR (was 12)
-        AMBIENT_LIGHT_INTENSITY: 0.8,
-        DIRECTIONAL_LIGHT_INTENSITY: 0.8
+        CAMERA_DISTANCE: 10, // ✅ BALANCED  
+        AMBIENT_LIGHT_INTENSITY: 0.7,
+        DIRECTIONAL_LIGHT_INTENSITY: 0.7
     },
 
     JACKET: {
         MODEL_PATH: 'assets/models/jacket.glb',
-        SCALE: 2.0, // 🔴 BIGGER (was 1.5)
-        POSITION: { x: 0, y: -1, z: 0 }, // 🔴 Lower starting position
+        SCALE: 1.2,
+        POSITION: { x: 0, y: 0, z: 0 },
         ROTATION: { x: 0, y: 0, z: 0 }
     },
 
     POSE: {
         MODEL_COMPLEXITY: 0,
-        SMOOTH_LANDMARKS: false,
+        SMOOTH_LANDMARKS: true,
         SMOOTH_SEGMENTATION: false,
-        MIN_DETECTION_CONFIDENCE: 0.3,
-        MIN_TRACKING_CONFIDENCE: 0.3,
+        MIN_DETECTION_CONFIDENCE: 0.5,
+        MIN_TRACKING_CONFIDENCE: 0.5,
         ENABLE_SEGMENTATION: false
     },
 
     SKELETON: {
-        SMOOTHING_FACTOR: 0.15, // 🔴 Very responsive
+        SMOOTHING_FACTOR: 0.25,
         SCALE_MULTIPLIERS: {
             SHOULDERS: 1.0,
             TORSO: 1.0,
@@ -92,15 +92,15 @@ const CONFIG = {
     },
 
     PERFORMANCE: {
-        TARGET_FPS: 24,
-        LOW_PERFORMANCE_THRESHOLD: 15,
-        RENDER_SCALE: 1.0, // 🔴 Full quality
+        TARGET_FPS: 30,
+        LOW_PERFORMANCE_THRESHOLD: 20,
+        RENDER_SCALE: 0.9,
         ENABLE_STATS: true,
-        ADAPTIVE_QUALITY: false
+        ADAPTIVE_QUALITY: true
     },
 
     UI: {
-        POSE_GUIDE_DURATION: 5000,
+        POSE_GUIDE_DURATION: 3000,
         HIDE_CONTROLS_DELAY: 5000,
         TOAST_DURATION: 3000
     },
@@ -108,9 +108,9 @@ const CONFIG = {
     DEBUG: {
         SHOW_POSE_LANDMARKS: false,
         SHOW_SKELETON_BONES: false,
-        LOG_PERFORMANCE: true,
+        LOG_PERFORMANCE: false,
         ENABLE_ORBIT_CONTROLS: false,
-        VERBOSE: true
+        VERBOSE: false
     }
 };
 

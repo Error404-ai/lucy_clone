@@ -1,21 +1,22 @@
-/* Lucy Virtual Try-On - FIXED OVERLAY LAYOUT
-   Jacket now overlays camera feed properly */
+/* Lucy Virtual Try-On - IMPROVED UI (Phase 7: Integration & Polish) */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 :root {
-    /* Colors */
+    /* Colors - More vibrant */
     --primary: #6366F1;
     --primary-dark: #4F46E5;
+    --primary-light: #818CF8;
     --secondary: #EC4899;
     --success: #10B981;
     --error: #EF4444;
+    --warning: #F59E0B;
     
     /* Backgrounds */
-    --bg-dark: #0A0E1A;
-    --bg-card: rgba(15, 23, 42, 0.85);
+    --bg-dark: #0F172A;
+    --bg-card: rgba(15, 23, 42, 0.95);
     --bg-glass: rgba(255, 255, 255, 0.08);
-    --border: rgba(255, 255, 255, 0.12);
+    --border: rgba(255, 255, 255, 0.15);
     
     /* Text */
     --text-primary: #F8FAFC;
@@ -28,18 +29,19 @@
     --space-md: 0.75rem;
     --space-lg: 1rem;
     --space-xl: 1.5rem;
+    --space-2xl: 2rem;
     
     /* Effects */
     --shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
     --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6);
+    --radius: 12px;
+    --radius-lg: 16px;
     
-    /* Safe areas for mobile */
+    /* Safe areas */
     --safe-top: env(safe-area-inset-top, 0px);
     --safe-bottom: env(safe-area-inset-bottom, 0px);
-
-    /* Layout sizes */
-    --top-bar-height: 56px;
-    --fabric-panel-height: 180px;
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
 }
 
 * {
@@ -69,7 +71,7 @@ body {
 .loading-screen {
     position: fixed;
     inset: 0;
-    background: linear-gradient(135deg, #0A0E1A 0%, #1E293B 100%);
+    background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -78,11 +80,12 @@ body {
 
 .loading-content {
     text-align: center;
+    padding: var(--space-xl);
 }
 
 .loading-content h2 {
-    font-size: clamp(1.75rem, 8vw, 3rem);
-    margin: var(--space-lg) 0 var(--space-sm);
+    font-size: clamp(2rem, 8vw, 3.5rem);
+    margin: var(--space-xl) 0 var(--space-md);
     font-weight: 800;
     background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
     -webkit-background-clip: text;
@@ -91,7 +94,7 @@ body {
 }
 
 .loading-content p {
-    font-size: 0.938rem;
+    font-size: 1rem;
     color: var(--text-secondary);
     font-weight: 500;
 }
@@ -111,53 +114,52 @@ body {
 }
 
 /* ============================================================================
-   MAIN CONTAINER - FIXED: OVERLAY LAYOUT
+   MAIN CONTAINER - RESPONSIVE
    ============================================================================ */
 
 .app-container {
     position: fixed;
     inset: 0;
     background: var(--bg-dark);
+    display: flex;
+    flex-direction: column;
 }
 
-/* ✅ FIXED: Camera takes full width, jacket overlays on top */
 #camera-video {
     position: fixed;
-    top: calc(var(--safe-top) + var(--top-bar-height));
+    top: calc(var(--safe-top) + 60px);
     left: 0;
     width: 100vw;
-    height: calc(100vh - var(--top-bar-height) - var(--fabric-panel-height) - var(--safe-top) - var(--safe-bottom));
+    height: calc(100vh - 60px - 200px - var(--safe-top) - var(--safe-bottom));
     object-fit: cover;
     display: block !important;
     z-index: 1;
     background: #000;
 }
 
-/* ✅ FIXED: Canvas overlays camera with transparency */
 #main-canvas {
     position: fixed;
-    top: calc(var(--safe-top) + var(--top-bar-height));
+    top: calc(var(--safe-top) + 60px);
     left: 0;
     width: 100vw;
-    height: calc(100vh - var(--top-bar-height) - var(--fabric-panel-height) - var(--safe-top) - var(--safe-bottom));
+    height: calc(100vh - 60px - 200px - var(--safe-top) - var(--safe-bottom));
     display: block;
-    z-index: 2; /* Above camera */
-    pointer-events: none; /* Allow clicks to pass through */
+    z-index: 2;
+    pointer-events: none;
 }
 
 /* ============================================================================
-   TOP BAR - COMPACT
+   TOP BAR - IMPROVED
    ============================================================================ */
 
 .top-bar {
     position: fixed;
     top: var(--safe-top);
-    left: 0;
-    right: 0;
-    height: 56px;
+    left: var(--safe-left);
+    right: var(--safe-right);
+    height: 60px;
     background: var(--bg-card);
     backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -167,10 +169,16 @@ body {
     box-shadow: var(--shadow);
 }
 
+.logo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
 .logo h1 {
-    font-size: 1.25rem;
+    font-size: 1.5rem;
     font-weight: 800;
-    background: linear-gradient(135deg, var(--primary) 0%, #818CF8 100%);
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -186,11 +194,8 @@ body {
     display: flex;
     align-items: center;
     gap: var(--space-xs);
-}
-
-/* Hide text labels on mobile, show only dots */
-.status-item span:not(.status-dot) {
-    display: none;
+    font-size: 0.813rem;
+    color: var(--text-muted);
 }
 
 .status-dot {
@@ -198,7 +203,7 @@ body {
     height: 8px;
     border-radius: 50%;
     background: var(--error);
-    transition: all 0.2s;
+    transition: all 0.3s;
 }
 
 .status-item.active .status-dot {
@@ -209,18 +214,18 @@ body {
 .fps-counter {
     font-family: 'Courier New', monospace;
     font-size: 0.813rem;
-    padding: var(--space-xs) var(--space-sm);
+    padding: var(--space-xs) var(--space-md);
     background: var(--bg-glass);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: 8px;
     color: var(--text-primary);
     font-weight: 700;
-    min-width: 60px;
+    min-width: 70px;
     text-align: center;
 }
 
 /* ============================================================================
-   POSE GUIDE - SMALLER
+   POSE GUIDE - IMPROVED
    ============================================================================ */
 
 .pose-guide {
@@ -233,59 +238,60 @@ body {
     pointer-events: none;
     background: var(--bg-card);
     backdrop-filter: blur(20px);
-    padding: var(--space-lg);
-    border-radius: 16px;
+    padding: var(--space-xl);
+    border-radius: var(--radius-lg);
     border: 1px solid var(--border);
     box-shadow: var(--shadow-lg);
-    max-width: 280px;
+    max-width: 320px;
 }
 
 .guide-silhouette svg {
-    width: 120px;
-    height: 240px;
+    width: 140px;
+    height: 280px;
+    opacity: 0.8;
 }
 
 .pose-guide p {
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: 1rem;
+    font-weight: 600;
     color: var(--text-primary);
-    line-height: 1.4;
-    margin-top: var(--space-sm);
+    line-height: 1.5;
+    margin-top: var(--space-md);
 }
 
 /* ============================================================================
-   AI ENHANCEMENT - MOVED TO TOP RIGHT, COMPACT
+   AI ENHANCEMENT INDICATOR - REDESIGNED
    ============================================================================ */
 
 .ai-blend-indicator {
     position: fixed;
-    top: calc(56px + var(--safe-top) + var(--space-sm));
-    right: var(--space-md);
+    top: calc(60px + var(--safe-top) + var(--space-md));
+    right: var(--space-lg);
     background: var(--bg-card);
     backdrop-filter: blur(20px);
-    padding: var(--space-sm) var(--space-md);
-    border-radius: 10px;
+    padding: var(--space-md) var(--space-lg);
+    border-radius: var(--radius);
     z-index: 99;
-    min-width: 140px;
+    min-width: 160px;
     border: 1px solid var(--border);
     box-shadow: var(--shadow);
 }
 
 .blend-label {
-    font-size: 0.688rem;
-    font-weight: 600;
-    margin-bottom: 4px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin-bottom: 6px;
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
 
 .blend-bar {
-    height: 4px;
+    height: 6px;
     background: rgba(255, 255, 255, 0.1);
-    border-radius: 2px;
+    border-radius: 3px;
     overflow: hidden;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
 }
 
 .blend-fill {
@@ -296,75 +302,93 @@ body {
 }
 
 .blend-percentage {
-    font-size: 0.75rem;
+    font-size: 0.875rem;
     font-weight: 700;
     text-align: right;
     color: var(--text-primary);
 }
 
 /* ============================================================================
-   CAPTURE BUTTON - CENTERED, ABOVE FABRIC PANEL
+   CAPTURE BUTTON - IMPROVED
    ============================================================================ */
 
 .capture-controls {
     position: fixed;
-    bottom: calc(140px + var(--safe-bottom));
+    bottom: calc(200px + var(--safe-bottom) + var(--space-lg));
     left: 50%;
     transform: translateX(-50%);
     z-index: 95;
     text-align: center;
-    pointer-events: all; /* ✅ Enable clicks */
+    pointer-events: all;
 }
 
 .capture-btn {
     background: transparent;
     border: none;
     cursor: pointer;
-    transition: transform 0.2s;
-    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.5));
+    transition: all 0.2s;
+    filter: drop-shadow(0 4px 16px rgba(0, 0, 0, 0.6));
     padding: 0;
-    width: 64px;
-    height: 64px;
-    pointer-events: all; /* ✅ Enable clicks */
+    width: 72px;
+    height: 72px;
+    pointer-events: all;
+    position: relative;
 }
 
 .capture-btn:active {
     transform: scale(0.92);
 }
 
+.capture-btn::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.capture-btn:hover::before {
+    opacity: 0.5;
+}
+
 .capture-hint {
-    display: none; /* Hide on mobile to save space */
+    margin-top: var(--space-md);
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
 }
 
 /* ============================================================================
-   FABRIC PANEL - COMPACT, BOTTOM
+   FABRIC PANEL - IMPROVED & MOBILE RESPONSIVE
    ============================================================================ */
 
 .fabric-panel {
     position: fixed;
     bottom: var(--safe-bottom);
-    left: 0;
-    right: 0;
+    left: var(--safe-left);
+    right: var(--safe-right);
     background: var(--bg-card);
     backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
     border-top: 1px solid var(--border);
     z-index: 90;
-    padding: var(--space-md) var(--space-lg);
+    padding: var(--space-lg);
     box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.4);
-    max-height: 180px;
-    pointer-events: all; /* ✅ Enable clicks */
+    max-height: 200px;
+    pointer-events: all;
 }
 
 .panel-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: var(--space-sm);
+    margin-bottom: var(--space-md);
 }
 
 .panel-header h3 {
-    font-size: 0.938rem;
+    font-size: 1.125rem;
     font-weight: 700;
     color: var(--text-primary);
 }
@@ -373,13 +397,16 @@ body {
     background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
     color: white;
     border: none;
-    padding: var(--space-xs) var(--space-md);
-    border-radius: 8px;
-    font-size: 0.813rem;
+    padding: var(--space-sm) var(--space-lg);
+    border-radius: 10px;
+    font-size: 0.875rem;
     font-weight: 600;
     cursor: pointer;
-    transition: transform 0.15s;
-    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+    transition: all 0.2s;
+    box-shadow: 0 2px 12px rgba(99, 102, 241, 0.4);
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
 }
 
 .scan-btn:active {
@@ -388,7 +415,7 @@ body {
 
 .fabric-scroll {
     display: flex;
-    gap: var(--space-md);
+    gap: var(--space-lg);
     overflow-x: auto;
     overflow-y: hidden;
     padding: var(--space-sm) 0;
@@ -405,7 +432,7 @@ body {
     flex-shrink: 0;
     text-align: center;
     cursor: pointer;
-    transition: transform 0.2s;
+    transition: all 0.2s;
 }
 
 .fabric-item:active {
@@ -413,107 +440,92 @@ body {
 }
 
 .fabric-thumbnail {
-    width: 70px;
-    height: 70px;
-    border-radius: 12px;
+    width: 80px;
+    height: 80px;
+    border-radius: var(--radius);
     background: var(--bg-glass);
     background-size: cover;
     background-position: center;
     border: 2px solid transparent;
-    transition: all 0.2s;
-    margin-bottom: var(--space-xs);
+    transition: all 0.3s;
+    margin-bottom: var(--space-sm);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .fabric-item.selected .fabric-thumbnail {
     border-color: var(--primary);
-    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.3), 0 4px 16px rgba(99, 102, 241, 0.4);
+    transform: scale(1.05);
 }
 
 .fabric-item span {
     display: block;
-    font-size: 0.75rem;
+    font-size: 0.813rem;
     font-weight: 600;
     color: var(--text-secondary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 70px;
+    max-width: 80px;
 }
 
 .fabric-item.selected span {
     color: var(--primary);
 }
 
-.loading-skeleton .fabric-thumbnail {
-    background: linear-gradient(90deg, 
-        rgba(255, 255, 255, 0.05) 25%, 
-        rgba(255, 255, 255, 0.1) 50%, 
-        rgba(255, 255, 255, 0.05) 75%);
-    background-size: 200% 100%;
-    animation: loading 1.5s infinite;
-}
-
-@keyframes loading {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
-}
-
-.selected-fabric-info {
-    margin-top: var(--space-sm);
-    padding: var(--space-sm);
-    background: var(--bg-glass);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    text-align: center;
-}
-
-.fabric-name {
-    font-weight: 600;
-    font-size: 0.813rem;
-    color: var(--text-primary);
-}
-
 /* ============================================================================
-   MODALS
+   MODALS - IMPROVED
    ============================================================================ */
 
 .modal {
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.92);
-    backdrop-filter: blur(4px);
+    background: rgba(0, 0, 0, 0.95);
+    backdrop-filter: blur(8px);
     z-index: 1000;
     align-items: center;
     justify-content: center;
-    padding: var(--space-lg);
+    padding: var(--space-xl);
+    animation: fadeIn 0.2s;
 }
 
 .modal.active {
     display: flex;
 }
 
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
 .modal-content {
     background: var(--bg-dark);
     border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: var(--space-xl);
+    border-radius: var(--radius-lg);
+    padding: var(--space-2xl);
     width: 100%;
     max-width: 500px;
     max-height: 90vh;
     overflow-y: auto;
     position: relative;
     box-shadow: var(--shadow-lg);
+    animation: slideUp 0.3s;
+}
+
+@keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
 }
 
 .modal-close {
     position: absolute;
-    top: var(--space-md);
-    right: var(--space-md);
+    top: var(--space-lg);
+    right: var(--space-lg);
     background: var(--bg-glass);
     border: 1px solid var(--border);
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
     font-size: 1.5rem;
     cursor: pointer;
@@ -524,156 +536,34 @@ body {
     transition: all 0.2s;
 }
 
-.modal-close:active {
-    transform: scale(0.9);
+.modal-close:hover {
     background: var(--error);
+    border-color: var(--error);
 }
 
 .modal-content h2 {
-    margin-bottom: var(--space-lg);
-    font-size: 1.5rem;
+    margin-bottom: var(--space-xl);
+    font-size: 1.75rem;
     font-weight: 800;
     color: var(--text-primary);
 }
 
-.capture-loading,
-.scan-processing {
-    text-align: center;
-    padding: var(--space-xl) 0;
-}
-
-.capture-loading p,
-.scan-processing p {
-    margin-top: var(--space-lg);
-    font-size: 1rem;
-    color: var(--text-secondary);
-    font-weight: 500;
-}
-
-.capture-result img {
-    width: 100%;
-    border-radius: 12px;
-    margin-bottom: var(--space-lg);
-    box-shadow: var(--shadow);
-}
-
-.result-actions {
-    display: flex;
-    gap: var(--space-sm);
-    justify-content: center;
-    flex-wrap: wrap;
-}
-
-.action-btn {
-    padding: var(--space-md) var(--space-lg);
-    border: none;
-    border-radius: 10px;
-    font-size: 0.938rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s;
-    background: var(--bg-glass);
-    color: var(--text-primary);
-    border: 1px solid var(--border);
-}
-
-.action-btn.primary {
-    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-    border-color: var(--primary);
-}
-
-.action-btn:active {
-    transform: scale(0.95);
-}
-
-/* Fabric scan modal */
-.scan-guide p {
-    margin-bottom: var(--space-lg);
-    font-size: 0.938rem;
-    color: var(--text-secondary);
-}
-
-.scan-frame {
-    width: 240px;
-    height: 240px;
-    margin: var(--space-lg) auto;
-    position: relative;
-    border: 2px dashed rgba(99, 102, 241, 0.3);
-    border-radius: 12px;
-}
-
-.scan-corner {
-    position: absolute;
-    width: 32px;
-    height: 32px;
-    border-color: var(--primary);
-    border-style: solid;
-}
-
-.scan-corner.top-left {
-    top: -2px;
-    left: -2px;
-    border-width: 3px 0 0 3px;
-    border-radius: 12px 0 0 0;
-}
-
-.scan-corner.top-right {
-    top: -2px;
-    right: -2px;
-    border-width: 3px 3px 0 0;
-    border-radius: 0 12px 0 0;
-}
-
-.scan-corner.bottom-left {
-    bottom: -2px;
-    left: -2px;
-    border-width: 0 0 3px 3px;
-    border-radius: 0 0 0 12px;
-}
-
-.scan-corner.bottom-right {
-    bottom: -2px;
-    right: -2px;
-    border-width: 0 3px 3px 0;
-    border-radius: 0 0 12px 0;
-}
-
-#fabric-upload {
-    display: none;
-}
-
-.upload-btn {
-    display: inline-block;
-    padding: var(--space-md) var(--space-xl);
-    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
-    color: white;
-    border-radius: 10px;
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: transform 0.15s;
-}
-
-.upload-btn:active {
-    transform: scale(0.95);
-}
-
 /* ============================================================================
-   ERROR TOAST
+   TOAST NOTIFICATIONS - IMPROVED
    ============================================================================ */
 
 .toast {
     position: fixed;
-    top: calc(56px + var(--safe-top) + var(--space-md));
+    top: calc(60px + var(--safe-top) + var(--space-md));
     left: 50%;
     transform: translateX(-50%);
-    padding: var(--space-md) var(--space-lg);
-    border-radius: 10px;
-    font-size: 0.875rem;
+    padding: var(--space-lg) var(--space-xl);
+    border-radius: var(--radius);
+    font-size: 0.938rem;
     font-weight: 600;
     z-index: 2000;
     opacity: 0;
-    transition: opacity 0.2s;
+    transition: opacity 0.3s;
     max-width: calc(100% - 2rem);
     box-shadow: var(--shadow-lg);
     backdrop-filter: blur(20px);
@@ -687,155 +577,75 @@ body {
 .error-toast {
     background: rgba(239, 68, 68, 0.95);
     color: white;
-    border: 1px solid rgba(239, 68, 68, 0.3);
+    border: 1px solid rgba(239, 68, 68, 0.5);
 }
 
 /* ============================================================================
-   TABLET & DESKTOP
+   RESPONSIVE - TABLET
    ============================================================================ */
 
 @media (min-width: 768px) {
     .top-bar {
         height: 70px;
-        padding: 0 var(--space-xl);
     }
     
     .logo h1 {
         font-size: 1.75rem;
     }
     
-    .status-item span:not(.status-dot) {
-        display: inline;
-        font-size: 0.875rem;
-        font-weight: 500;
-        color: var(--text-secondary);
-    }
-    
-    .status-item {
-        gap: var(--space-sm);
-    }
-    
-    .status-dot {
-        width: 10px;
-        height: 10px;
-    }
-    
-    .ai-blend-indicator {
-        top: calc(70px + var(--safe-top) + var(--space-lg));
-        right: var(--space-xl);
-        min-width: 180px;
-        padding: var(--space-md) var(--space-lg);
-    }
-    
-    .blend-label {
-        font-size: 0.813rem;
-    }
-    
-    .blend-bar {
-        height: 6px;
-    }
-    
     .fabric-panel {
-        padding: var(--space-lg) var(--space-xl);
-        max-height: 220px;
-    }
-    
-    .panel-header h3 {
-        font-size: 1.125rem;
-    }
-    
-    .scan-btn {
-        padding: var(--space-sm) var(--space-lg);
-        font-size: 0.938rem;
+        max-height: 240px;
+        padding: var(--space-xl);
     }
     
     .fabric-thumbnail {
-        width: 90px;
-        height: 90px;
+        width: 100px;
+        height: 100px;
     }
     
     .fabric-item span {
-        font-size: 0.813rem;
-        max-width: 90px;
-    }
-    
-    .capture-controls {
-        bottom: calc(220px + var(--safe-bottom));
+        max-width: 100px;
     }
     
     .capture-btn {
-        width: 70px;
-        height: 70px;
+        width: 80px;
+        height: 80px;
     }
     
     .capture-hint {
         display: block;
-        margin-top: var(--space-md);
-        font-size: 0.938rem;
-        font-weight: 500;
-        color: var(--text-secondary);
-        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
     }
 }
 
-/* Landscape mobile */
+/* ============================================================================
+   RESPONSIVE - MOBILE LANDSCAPE
+   ============================================================================ */
+
 @media (orientation: landscape) and (max-height: 600px) {
     .top-bar {
-        height: 48px;
-    }
-    
-    .logo h1 {
-        font-size: 1rem;
-    }
-    
-    .ai-blend-indicator {
-        top: calc(48px + var(--safe-top) + var(--space-xs));
-        padding: 4px var(--space-sm);
-        min-width: 120px;
-    }
-    
-    .blend-label {
-        font-size: 0.625rem;
-    }
-    
-    .blend-bar {
-        height: 3px;
-    }
-    
-    .blend-percentage {
-        font-size: 0.688rem;
+        height: 50px;
     }
     
     .fabric-panel {
-        padding: var(--space-sm) var(--space-md);
-        max-height: 120px;
-    }
-    
-    .panel-header h3 {
-        font-size: 0.813rem;
+        max-height: 140px;
+        padding: var(--space-sm) var(--space-lg);
     }
     
     .fabric-thumbnail {
-        width: 56px;
-        height: 56px;
-    }
-    
-    .fabric-item span {
-        font-size: 0.688rem;
-        max-width: 56px;
-    }
-    
-    .capture-controls {
-        bottom: calc(100px + var(--safe-bottom));
+        width: 60px;
+        height: 60px;
     }
     
     .capture-btn {
-        width: 52px;
-        height: 52px;
+        width: 56px;
+        height: 56px;
     }
 }
 
-/* Reduced motion */
+/* ============================================================================
+   ACCESSIBILITY
+   ============================================================================ */
+
 @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -843,5 +653,13 @@ body {
         animation-duration: 0.01ms !important;
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
+    }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+    :root {
+        --border: rgba(255, 255, 255, 0.4);
+        --bg-glass: rgba(255, 255, 255, 0.15);
     }
 }

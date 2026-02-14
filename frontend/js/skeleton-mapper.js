@@ -1,4 +1,4 @@
-// Skeleton Mapper - EMERGENCY EXTREME SETTINGS
+// Skeleton Mapper - BALANCED for face + jacket visibility
 
 class EnhancedSkeletonMapper {
     constructor() {
@@ -9,33 +9,31 @@ class EnhancedSkeletonMapper {
         this.hasShownJacket = false;
         this.updateCount = 0;
         
-        // Smoothing
         this.smoothBuffer = {
             position: { x: 0, y: 0, z: 0 },
             rotation: { x: 0, y: 0, z: 0 },
             scale: 1
         };
         
-        // 🔴 EXTREME calibration for visibility
+        // ✅ BALANCED calibration - face + jacket both visible
         this.calibration = {
-            scaleMultiplier: 25.0, // 🔴 HUGE scale (was 16)
-            depthOffset: 0.5, // 🔴 IN FRONT of camera (was -1.0)
-            depthMultiplier: 2.0,
-            verticalOffset: -2.0, // 🔴 Much lower (was -0.8)
+            scaleMultiplier: 14.0, // ✅ Moderate (was 25)
+            depthOffset: -1.5, // ✅ Behind camera (was +0.5)
+            depthMultiplier: 3.5,
+            verticalOffset: -0.5, // ✅ At shoulders (was -2.0)
             horizontalOffset: 0.0,
-            smoothingAlpha: 0.15
+            smoothingAlpha: 0.25
         };
         
         this.isTracking = false;
-        this.minConfidence = 0.3; // Very low threshold
+        this.minConfidence = 0.4;
     }
 
     init(width, height) {
         this.width = width;
         this.height = height;
         this.initialized = true;
-        console.log("✅ Skeleton Mapper initialized:", width, "x", height);
-        console.log("🔴 EXTREME MODE: scale x25, depth +0.5, vertical -2.0");
+        console.log("✅ Skeleton Mapper initialized");
     }
 
     update(poseData) {
@@ -49,11 +47,11 @@ class EnhancedSkeletonMapper {
         const jacket = modelLoader.getModel();
         if (!jacket) return;
 
-        // 🔴 FORCE SHOW after just 3 frames
-        if (!this.hasShownJacket && this.updateCount > 3) {
+        // Show jacket after 5 frames
+        if (!this.hasShownJacket && this.updateCount > 5) {
             jacket.visible = true;
             this.hasShownJacket = true;
-            console.log('🔴 FORCING jacket visible at frame', this.updateCount);
+            console.log('✅ Jacket visible');
         }
 
         const confidence = this.calculateConfidence(landmarks);
@@ -78,13 +76,8 @@ class EnhancedSkeletonMapper {
             this.isTracking = true;
             this.lastPose = poseData;
 
-            // Log every 2 seconds
-            if (this.updateCount % 48 === 0) {
-                console.log(`🔴 Jacket: pos(${smoothPos.x.toFixed(1)}, ${smoothPos.y.toFixed(1)}, ${smoothPos.z.toFixed(1)}), scale: ${smoothScale.toFixed(1)}, conf: ${confidence.toFixed(2)}`);
-            }
-
         } catch (error) {
-            console.error('❌ Skeleton update error:', error);
+            console.error('Skeleton update error:', error);
         }
     }
 
@@ -107,9 +100,9 @@ class EnhancedSkeletonMapper {
         const nose = landmarks[L.NOSE];
         const avgDepth = nose ? (leftShoulder.z + rightShoulder.z + nose.z) / 3 : shoulderCenter.z;
 
-        // 🔴 EXTREME position multipliers
-        const x = (shoulderCenter.x - 0.5) * 20 + this.calibration.horizontalOffset; // 🔴 20x multiplier
-        const y = -(shoulderCenter.y - 0.5) * 20 + this.calibration.verticalOffset; // 🔴 20x multiplier
+        // ✅ BALANCED position multipliers
+        const x = (shoulderCenter.x - 0.5) * 12 + this.calibration.horizontalOffset;
+        const y = -(shoulderCenter.y - 0.5) * 12 + this.calibration.verticalOffset;
         const z = this.calibration.depthOffset + (avgDepth * this.calibration.depthMultiplier);
 
         return { x, y, z };
@@ -147,7 +140,7 @@ class EnhancedSkeletonMapper {
         const rightShoulder = landmarks[L.RIGHT_SHOULDER];
         
         if (!leftShoulder || !rightShoulder) {
-            return 10.0;
+            return 8.0;
         }
 
         const dx = rightShoulder.x - leftShoulder.x;
@@ -157,8 +150,8 @@ class EnhancedSkeletonMapper {
 
         let scale = shoulderWidth * this.calibration.scaleMultiplier;
 
-        // 🔴 EXTREME scale range
-        return Utils.clamp(scale, 8.0, 30.0); // Much bigger range
+        // ✅ BALANCED scale range
+        return Utils.clamp(scale, 5.0, 15.0);
     }
 
     applySmoothing(current, key) {
@@ -203,7 +196,6 @@ class EnhancedSkeletonMapper {
         if (jacket) {
             jacket.visible = true;
             this.hasShownJacket = true;
-            console.log('🔴 Jacket FORCE SHOWN');
         }
     }
 
@@ -217,7 +209,6 @@ class EnhancedSkeletonMapper {
         this.isTracking = false;
         this.hasShownJacket = false;
         this.updateCount = 0;
-        console.log('Skeleton mapper reset');
     }
 
     getTrackingStatus() {
