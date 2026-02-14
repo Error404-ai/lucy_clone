@@ -1,4 +1,4 @@
-// AI Pipeline - WebSocket connection for real-time AI enhancement
+// AI Pipeline - FIXED - Graceful failure, doesn't block core features
 
 class AIPipeline {
     constructor() {
@@ -11,32 +11,49 @@ class AIPipeline {
         this.isBlending = false;
         this.blendCanvas = null;
         this.blendCtx = null;
+        this.failedPermanently = false;
     }
 
     /**
-     * Initialize AI pipeline
+     * Initialize AI pipeline - NON-BLOCKING
      */
     async init() {
         if (!CONFIG.AI_PIPELINE.ENABLED) {
-            console.log('AI pipeline disabled in config');
+            console.log('ℹ️ AI pipeline disabled in config');
+            this.failedPermanently = true;
             return;
         }
 
         try {
-            console.log('Initializing AI pipeline...');
+            console.log('🤖 Attempting to connect to AI server...');
             
-            // Create blend canvas for compositing
+            // Create blend canvas
             this.blendCanvas = document.createElement('canvas');
             this.blendCtx = this.blendCanvas.getContext('2d');
             
-            // Connect to WebSocket
-            await this.connect();
+            // ✅ CRITICAL: Try to connect but don't block startup
+            await Promise.race([
+                this.connect(),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Connection timeout')), 5000)
+                )
+            ]);
             
-            console.log('AI pipeline initialized');
+            console.log('✅ AI pipeline connected');
             
         } catch (error) {
-            console.error('AI pipeline initialization failed:', error);
-            Utils.showError('AI enhancement unavailable - using 3D preview only');
+            // ✅ CRITICAL: Fail gracefully - don't throw
+            console.warn('⚠️ AI server unavailable:', error.message);
+            console.log('ℹ️ Continuing with 3D-only mode (no AI enhancement)');
+            this.failedPermanently = true;
+            
+            // Hide AI indicator
+            const aiIndicator = document.getElementById('ai-blend-indicator');
+            if (aiIndicator) {
+                aiIndicator.style.display = 'none';
+            }
+            
+            // Don't throw - let app continue
         }
     }
 
@@ -46,15 +63,14 @@ class AIPipeline {
     async connect() {
         return new Promise((resolve, reject) => {
             try {
-                console.log('Connecting to AI server...');
-                
                 this.ws = new WebSocket(CONFIG.API.WS_URL);
                 
                 this.ws.onopen = () => {
                     this.isConnected = true;
                     this.reconnectAttempts = 0;
+                    this.failedPermanently = false;
                     Utils.updateStatus('ai', true);
-                    console.log('Connected to AI server');
+                    console.log('✅ Connected to AI server');
                     resolve();
                 };
                 
@@ -63,18 +79,23 @@ class AIPipeline {
                 };
                 
                 this.ws.onerror = (error) => {
-                    console.error('WebSocket error:', error);
+                    console.warn('⚠️ WebSocket error:', error.message || 'Connection failed');
                     Utils.updateStatus('ai', false);
+                    reject(error);
                 };
                 
                 this.ws.onclose = () => {
                     this.isConnected = false;
                     Utils.updateStatus('ai', false);
-                    console.log('Disconnected from AI server');
-                    this.handleDisconnect();
+                    console.log('ℹ️ Disconnected from AI server');
+                    
+                    // ✅ Only attempt reconnect if not permanently failed
+                    if (!this.failedPermanently) {
+                        this.handleDisconnect();
+                    }
                 };
                 
-                // Timeout after 5 seconds
+                // Timeout
                 setTimeout(() => {
                     if (!this.isConnected) {
                         reject(new Error('Connection timeout'));
@@ -88,17 +109,16 @@ class AIPipeline {
     }
 
     /**
-     * Start sending keyframes
+     * Start sending keyframes (only if connected)
      */
     start() {
-        if (!this.isConnected) {
-            console.warn('Cannot start AI pipeline - not connected');
+        if (!this.isConnected || this.failedPermanently) {
+            console.log('ℹ️ AI pipeline not started (not connected)');
             return;
         }
 
-        console.log('Starting AI keyframe pipeline...');
+        console.log('🚀 Starting AI keyframe pipeline...');
         
-        // Send keyframes at regular intervals
         this.keyframeInterval = setInterval(() => {
             this.sendKeyframe();
         }, CONFIG.AI_PIPELINE.KEYFRAME_INTERVAL);
@@ -111,24 +131,19 @@ class AIPipeline {
         if (!this.isConnected || !cameraManager.isReady()) return;
 
         try {
-            // Capture camera frame
             const cameraFrame = await cameraManager.captureFrameBase64('image/jpeg', 
                 CONFIG.AI_PIPELINE.JPEG_QUALITY);
             
-            // Capture 3D jacket render
             const jacketRender = compositeRenderer.captureFrame();
             
-            // Get pose landmarks
             const pose = poseTracker.isPoseDetected() ? {
                 landmarks: poseTracker.landmarks,
                 shoulderWidth: poseTracker.getShoulderWidth(),
                 rotation: poseTracker.getBodyRotation()
             } : null;
             
-            // Get current fabric
             const fabric = fabricSelector.getSelectedFabric();
             
-            // Prepare payload
             const payload = {
                 type: 'keyframe',
                 timestamp: Date.now(),
@@ -138,11 +153,10 @@ class AIPipeline {
                 fabric_id: fabric ? fabric.id : null
             };
             
-            // Send via WebSocket
             this.ws.send(JSON.stringify(payload));
             
         } catch (error) {
-            console.error('Error sending keyframe:', error);
+            console.warn('⚠️ Error sending keyframe:', error.message);
         }
     }
 
@@ -154,19 +168,16 @@ class AIPipeline {
             const message = JSON.parse(data);
             
             if (message.type === 'keyframe_result') {
-                // Received AI-enhanced frame
                 this.latestAIFrame = message.image;
-                
-                // Start blending animation
                 this.startBlend();
             }
             
             if (message.type === 'error') {
-                console.error('AI server error:', message.error);
+                console.warn('⚠️ AI server error:', message.error);
             }
             
         } catch (error) {
-            console.error('Error handling message:', error);
+            console.warn('⚠️ Error handling message:', error.message);
         }
     }
 
@@ -184,13 +195,10 @@ class AIPipeline {
             const elapsed = currentTime - startTime;
             const progress = Math.min(elapsed / duration, 1);
             
-            // Ease-out cubic
             const easedProgress = 1 - Math.pow(1 - progress, 3);
             
-            // Update blend alpha
             this.blendAlpha = easedProgress * CONFIG.AI_PIPELINE.MAX_BLEND_ALPHA;
             
-            // Update UI indicator
             this.updateBlendIndicator(this.blendAlpha);
             
             if (progress < 1) {
@@ -210,9 +218,11 @@ class AIPipeline {
         const fillEl = document.getElementById('blend-fill');
         const percentEl = document.getElementById('blend-percentage');
         
-        const percent = Math.round(alpha * 100);
-        fillEl.style.width = `${percent}%`;
-        percentEl.textContent = `${percent}%`;
+        if (fillEl && percentEl) {
+            const percent = Math.round(alpha * 100);
+            fillEl.style.width = `${percent}%`;
+            percentEl.textContent = `${percent}%`;
+        }
     }
 
     /**
@@ -230,20 +240,27 @@ class AIPipeline {
     }
 
     /**
-     * Handle disconnection
+     * Handle disconnection - with exponential backoff
      */
     async handleDisconnect() {
         if (this.reconnectAttempts >= CONFIG.AI_PIPELINE.MAX_RECONNECT_ATTEMPTS) {
-            console.log('Max reconnect attempts reached');
-            Utils.showError('AI enhancement unavailable - using 3D preview only');
+            console.log('ℹ️ Max reconnect attempts reached - giving up');
+            this.failedPermanently = true;
+            
+            // Hide AI indicator
+            const aiIndicator = document.getElementById('ai-blend-indicator');
+            if (aiIndicator) {
+                aiIndicator.style.display = 'none';
+            }
             return;
         }
 
-        console.log(`Attempting to reconnect (${this.reconnectAttempts + 1}/${CONFIG.AI_PIPELINE.MAX_RECONNECT_ATTEMPTS})...`);
-        
         this.reconnectAttempts++;
+        const delay = CONFIG.AI_PIPELINE.RECONNECT_DELAY * Math.pow(2, this.reconnectAttempts - 1);
         
-        await Utils.wait(CONFIG.AI_PIPELINE.RECONNECT_DELAY);
+        console.log(`⏳ Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${CONFIG.AI_PIPELINE.MAX_RECONNECT_ATTEMPTS})...`);
+        
+        await Utils.wait(delay);
         
         try {
             await this.connect();
@@ -251,7 +268,7 @@ class AIPipeline {
                 this.start();
             }
         } catch (error) {
-            console.error('Reconnection failed:', error);
+            console.warn('⚠️ Reconnection failed:', error.message);
         }
     }
 
@@ -263,8 +280,7 @@ class AIPipeline {
             clearInterval(this.keyframeInterval);
             this.keyframeInterval = null;
         }
-        
-        console.log('AI pipeline stopped');
+        console.log('⏹️ AI pipeline stopped');
     }
 
     /**
@@ -280,16 +296,22 @@ class AIPipeline {
         
         this.isConnected = false;
         Utils.updateStatus('ai', false);
-        console.log('AI pipeline closed');
+        console.log('🔌 AI pipeline closed');
     }
 
     /**
      * Check if connected
      */
     isActive() {
-        return this.isConnected;
+        return this.isConnected && !this.failedPermanently;
+    }
+    
+    /**
+     * Check if permanently failed
+     */
+    hasFailed() {
+        return this.failedPermanently;
     }
 }
 
-// Create global instance
 const aiPipeline = new AIPipeline();

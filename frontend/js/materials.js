@@ -1,4 +1,4 @@
-// Materials Manager - EMERGENCY FIX - No black screen
+// Materials Manager - CRITICAL FIX - Only target jacket meshes
 
 class MaterialsManager {
     constructor() {
@@ -22,7 +22,7 @@ class MaterialsManager {
     }
 
     /**
-     * Apply fabric - SAFE version that won't break rendering
+     * Apply fabric - CRITICAL FIX: Only apply to JACKET meshes
      */
     async applyFabric(fabricData) {
         try {
@@ -34,14 +34,20 @@ class MaterialsManager {
                 return false;
             }
 
+            // ✅ CRITICAL: Get ONLY jacket meshes (from loader)
             const jacketMeshes = modelLoader.getMeshes();
             
             if (jacketMeshes.length === 0) {
-                console.error('❌ No jacket meshes');
+                console.error('❌ No jacket meshes found');
                 return false;
             }
 
-            // Create new material SAFELY
+            console.log(`🎯 Targeting ${jacketMeshes.length} jacket mesh(es):`);
+            jacketMeshes.forEach((mesh, i) => {
+                console.log(`   ${i + 1}. "${mesh.name}" (${mesh.type})`);
+            });
+
+            // Create new material
             let newMaterial;
             
             try {
@@ -54,6 +60,7 @@ class MaterialsManager {
                         colorValue = '#808080'; // Fallback
                     }
                     
+                    // ✅ CRITICAL: Use MeshStandardMaterial for proper lighting
                     newMaterial = new THREE.MeshStandardMaterial({
                         color: colorValue,
                         roughness: fabricData.roughness || 0.8,
@@ -77,19 +84,28 @@ class MaterialsManager {
                 newMaterial = this.defaultMaterial.clone();
             }
 
-            // Apply to meshes SAFELY - one at a time
+            // ✅ CRITICAL: Apply ONLY to jacket meshes (not video plane!)
             let appliedCount = 0;
             
             for (const mesh of jacketMeshes) {
                 try {
+                    // ✅ Skip if this is the video plane (safety check)
+                    if (mesh.name === 'VideoBackground' || mesh.renderOrder === -1000) {
+                        console.log(`⚠️ Skipping video plane: ${mesh.name}`);
+                        continue;
+                    }
+                    
                     const oldMaterial = mesh.material;
                     
                     // Apply new material
                     mesh.material = newMaterial.clone();
                     mesh.material.needsUpdate = true;
                     
+                    // ✅ Set proper render order (jacket renders AFTER video)
+                    mesh.renderOrder = 0;
+                    
                     appliedCount++;
-                    console.log(`✅ Applied to mesh: ${mesh.name}`);
+                    console.log(`✅ Applied to: "${mesh.name}" (renderOrder: ${mesh.renderOrder})`);
                     
                     // Dispose old material (but not default)
                     if (oldMaterial && oldMaterial !== this.defaultMaterial) {
@@ -113,6 +129,9 @@ class MaterialsManager {
                 modelLoader.setVisible(true);
                 
                 console.log(`✅ Fabric "${fabricData.name}" applied to ${appliedCount} mesh(es)`);
+                console.log('📊 Scene composition:');
+                console.log('   - Video plane at z=-10 (renderOrder: -1000)');
+                console.log(`   - Jacket meshes at z=0 (renderOrder: 0)`);
                 
                 // Force a render
                 try {
@@ -131,7 +150,7 @@ class MaterialsManager {
             console.error('❌ CRITICAL ERROR in applyFabric:', error);
             console.error('Stack:', error.stack);
             
-            // Emergency recovery - try to restore default material
+            // Emergency recovery
             try {
                 const jacketMeshes = modelLoader.getMeshes();
                 jacketMeshes.forEach(mesh => {

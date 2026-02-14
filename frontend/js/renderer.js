@@ -1,4 +1,4 @@
-// Composite Renderer - FIXED - Video background now visible
+// Composite Renderer - CRITICAL FIX - Proper video + jacket layering
 
 class CompositeRenderer {
     constructor() {
@@ -18,7 +18,7 @@ class CompositeRenderer {
 
     init(width, height) {
         try {
-            console.log('Initializing Renderer...');
+            console.log('🎬 Initializing Renderer...');
             
             this.width = width;
             this.height = height;
@@ -38,14 +38,17 @@ class CompositeRenderer {
             console.log('✅ Renderer initialized');
             
         } catch (error) {
-            console.error('Renderer init failed:', error);
+            console.error('❌ Renderer init failed:', error);
             throw error;
         }
     }
 
     setupVideoBackground() {
         const video = cameraManager.video;
-        if (!video) return;
+        if (!video) {
+            console.warn('⚠️ Video element not found');
+            return;
+        }
 
         const waitForVideo = () => {
             if (video.readyState >= 2) {
@@ -58,32 +61,53 @@ class CompositeRenderer {
     }
 
     createVideoTexture(video) {
+        console.log('🎥 Creating video texture...');
+        
+        // ✅ Create video texture
         this.videoTexture = new THREE.VideoTexture(video);
         this.videoTexture.minFilter = THREE.LinearFilter;
         this.videoTexture.magFilter = THREE.LinearFilter;
         this.videoTexture.format = THREE.RGBFormat;
         this.videoTexture.colorSpace = THREE.SRGBColorSpace;
 
-        const aspect = this.width / this.height;
-        const planeWidth = 20;
-        const planeHeight = planeWidth / aspect;
+        // ✅ CRITICAL: Calculate proper plane size to fill viewport
+        const camera = sceneManager.getCamera();
+        const distance = Math.abs(camera.position.z - (-10)); // Distance to background plane
+        const vFOV = THREE.MathUtils.degToRad(camera.fov);
+        const planeHeight = 2 * Math.tan(vFOV / 2) * distance;
+        const planeWidth = planeHeight * camera.aspect;
+        
+        console.log(`📐 Video plane: ${planeWidth.toFixed(2)} x ${planeHeight.toFixed(2)} at z=-10`);
         
         const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
+        
+        // ✅ CRITICAL: Use MeshBasicMaterial (unlit, no lighting effects)
         const material = new THREE.MeshBasicMaterial({
             map: this.videoTexture,
             side: THREE.FrontSide,
-            depthWrite: true,
-            depthTest: true,
+            depthWrite: false, // ✅ Don't write to depth buffer
+            depthTest: false,  // ✅ Always render behind everything
             toneMapped: false
         });
 
         this.videoPlane = new THREE.Mesh(geometry, material);
-        this.videoPlane.position.z = -10;
-        this.videoPlane.renderOrder = -1000;
-        this.videoPlane.visible = true; // ✅ FIXED: Now visible!
         
+        // ✅ CRITICAL: Position FAR behind jacket
+        this.videoPlane.position.set(0, 0, -10);
+        
+        // ✅ CRITICAL: Render order - video FIRST (lowest number)
+        this.videoPlane.renderOrder = -1000;
+        
+        // ✅ Make visible
+        this.videoPlane.visible = true;
+        
+        // ✅ Add to scene FIRST (before jacket)
         sceneManager.add(this.videoPlane);
-        console.log('✓ Video background ready and VISIBLE');
+        
+        console.log('✅ Video background created and added to scene');
+        console.log('   Position:', this.videoPlane.position.toArray());
+        console.log('   Render order:', this.videoPlane.renderOrder);
+        console.log('   Visible:', this.videoPlane.visible);
     }
 
     start() {
@@ -91,7 +115,7 @@ class CompositeRenderer {
         
         this.isRunning = true;
         this.lastRenderTime = performance.now();
-        console.log('Starting render loop...');
+        console.log('▶️ Starting render loop...');
         this.render();
     }
 
@@ -101,7 +125,7 @@ class CompositeRenderer {
             cancelAnimationFrame(this.animationId);
             this.animationId = null;
         }
-        console.log('Render loop stopped');
+        console.log('⏹️ Render loop stopped');
     }
 
     render() {
@@ -121,19 +145,19 @@ class CompositeRenderer {
 
             this.lastRenderTime = now;
 
-            // Update video texture
+            // ✅ Update video texture EVERY frame
             if (this.videoTexture && cameraManager.isReady()) {
                 this.videoTexture.needsUpdate = true;
             }
 
-            // Render scene
+            // ✅ Render scene (video plane + jacket)
             sceneManager.render();
 
             // Update FPS
             this.updateFPS();
 
         } catch (error) {
-            console.error('Render error:', error);
+            console.error('❌ Render error:', error);
         }
     }
 
@@ -193,6 +217,20 @@ class CompositeRenderer {
         if (camera) {
             camera.aspect = displayWidth / displayHeight;
             camera.updateProjectionMatrix();
+            
+            // ✅ Resize video plane to match new aspect ratio
+            if (this.videoPlane) {
+                const distance = Math.abs(camera.position.z - (-10));
+                const vFOV = THREE.MathUtils.degToRad(camera.fov);
+                const planeHeight = 2 * Math.tan(vFOV / 2) * distance;
+                const planeWidth = planeHeight * camera.aspect;
+                
+                this.videoPlane.scale.set(
+                    planeWidth / this.videoPlane.geometry.parameters.width,
+                    planeHeight / this.videoPlane.geometry.parameters.height,
+                    1
+                );
+            }
         }
     }
 
