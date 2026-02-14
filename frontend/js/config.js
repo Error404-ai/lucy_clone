@@ -53,41 +53,36 @@ const CONFIG = {
         ENABLE_SEGMENTATION: false
     },
 
-    SKELETON: {
-        SMOOTHING_FACTOR: 0.2,
-        SCALE_MULTIPLIERS: {
-            SHOULDERS: 1.0,
-            TORSO: 1.0,
-            ARMS: 1.0
-        },
-        // ✅ FIXED: Better positioning for face visibility
-        BASE_SCALE: 8.0,         // Reduced from 15.0
-        DEPTH_OFFSET: -1.0,      // Closer than -2.0
-        VERTICAL_OFFSET: 0.5,    // Raised up from 0.0
-        HORIZONTAL_OFFSET: 0.0,
-        
-        // Position multipliers - REDUCED for smaller range
-        POSITION_SCALE_X: 4.0,   // Was 6.0 or 16.0
-        POSITION_SCALE_Y: 4.0,   // Was 6.0 or 16.0
-        
-        // Scale range - TIGHTER for torso only
-        MIN_SCALE: 2.0,          // Was 8.0
-        MAX_SCALE: 4.0,          // Was 20.0
-        
-        LANDMARKS: {
-            NOSE: 0,
-            LEFT_EYE: 2,
-            RIGHT_EYE: 5,
-            LEFT_SHOULDER: 11,
-            RIGHT_SHOULDER: 12,
-            LEFT_ELBOW: 13,
-            RIGHT_ELBOW: 14,
-            LEFT_WRIST: 15,
-            RIGHT_WRIST: 16,
-            LEFT_HIP: 23,
-            RIGHT_HIP: 24
-        }
+SKELETON: {
+    SMOOTHING_FACTOR: 0.2,
+    SCALE_MULTIPLIERS: {
+        SHOULDERS: 1.0,
+        TORSO: 1.0,
+        ARMS: 1.0
     },
+    BASE_SCALE: 6.0,        // ⬅️ FIXED: Was 15.0 or 18.0
+    DEPTH_OFFSET: -1.0,
+    VERTICAL_OFFSET: 0.0,
+    HORIZONTAL_OFFSET: 0.0,
+    POSITION_SCALE_X: 4.0,
+    POSITION_SCALE_Y: 4.0,
+    MIN_SCALE: 2.0,         // ⬅️ FIXED: Was 8.0
+    MAX_SCALE: 4.0,         // ⬅️ FIXED: Was 20.0
+    
+    LANDMARKS: {
+        NOSE: 0,
+        LEFT_EYE: 2,
+        RIGHT_EYE: 5,
+        LEFT_SHOULDER: 11,
+        RIGHT_SHOULDER: 12,
+        LEFT_ELBOW: 13,
+        RIGHT_ELBOW: 14,
+        LEFT_WRIST: 15,
+        RIGHT_WRIST: 16,
+        LEFT_HIP: 23,
+        RIGHT_HIP: 24
+    }
+},
 
     AI_PIPELINE: {
         ENABLED: true,

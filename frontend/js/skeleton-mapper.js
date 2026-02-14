@@ -1,4 +1,4 @@
-// Skeleton Mapper - CORRECTED FOR FACE VISIBILITY
+// Skeleton Mapper - FIXED VERSION - JACKET ON TORSO ONLY
 
 class SkeletonMapper {
     constructor() {
@@ -7,10 +7,11 @@ class SkeletonMapper {
         this.initialized = false;
         this.hasSetInitialPosition = false;
         
+        // ✅ FIXED: Much smaller defaults
         this.smoothBuffer = {
-            position: { x: 0, y: 0.5, z: -1 },
+            position: { x: 0, y: 0, z: 0 },
             rotation: { x: 0, y: Math.PI, z: 0 },
-            scale: 2.5  // ✅ CORRECTED: Smaller default
+            scale: 2.5  // Small scale - torso only
         };
     }
 
@@ -20,7 +21,7 @@ class SkeletonMapper {
         this.initialized = true;
         console.log("✅ Skeleton Mapper initialized:", width, "x", height);
         
-        // ✅ Set initial position - CORRECTED for face visibility
+        // Set initial position immediately
         setTimeout(() => {
             this.setInitialPosition();
         }, 500);
@@ -34,10 +35,10 @@ class SkeletonMapper {
             return;
         }
 
-        // ✅ CORRECTED: Jacket on torso only, face fully visible
-        jacket.position.set(0, 0.5, -1);      // Upper body, closer
-        jacket.scale.set(2.5, 2.5, 2.5);      // Much smaller
-        jacket.rotation.set(0, Math.PI, 0);   // Face camera
+        // ✅ CRITICAL FIX: Small scale, center position
+        jacket.position.set(0, 0, 0);
+        jacket.scale.set(2.5, 2.5, 2.5);  // ⬅️ THIS IS THE KEY FIX
+        jacket.rotation.set(0, Math.PI, 0);
         jacket.visible = true;
 
         // Force all meshes visible
@@ -49,12 +50,11 @@ class SkeletonMapper {
 
         this.hasSetInitialPosition = true;
 
-        console.log('✅ JACKET POSITIONED (CORRECTED):');
-        console.log('   Position:', jacket.position.toArray(), '← Upper body');
-        console.log('   Scale:', jacket.scale.toArray(), '← Torso size');
-        console.log('   Rotation:', jacket.rotation.toArray());
+        console.log('✅ JACKET POSITIONED:');
+        console.log('   Position:', jacket.position.toArray());
+        console.log('   Scale:', jacket.scale.toArray(), '⬅️ Should be [2.5, 2.5, 2.5]');
         console.log('   Visible:', jacket.visible);
-        console.log('   Meshes visible:', meshes.length);
+        console.log('   Meshes:', meshes.length);
     }
 
     update(poseData) {
@@ -68,7 +68,6 @@ class SkeletonMapper {
             jacket.visible = true;
         }
 
-        // If no initial position set, set it now
         if (!this.hasSetInitialPosition) {
             this.setInitialPosition();
             return;
@@ -100,7 +99,6 @@ class SkeletonMapper {
                 console.error('❌ Tracking error:', error);
             }
         }
-        // If no pose, keep at initial position
     }
 
     calculatePosition(landmarks) {
@@ -109,8 +107,7 @@ class SkeletonMapper {
         const rightShoulder = landmarks[L.RIGHT_SHOULDER];
 
         if (!leftShoulder || !rightShoulder) {
-            // Default: upper body position
-            return { x: 0, y: 0.5, z: -1 };
+            return { x: 0, y: 0, z: 0 };
         }
 
         const shoulderCenter = {
@@ -119,10 +116,10 @@ class SkeletonMapper {
             z: (leftShoulder.z + rightShoulder.z) / 2
         };
 
-        // ✅ CORRECTED: Smaller position scaling
-        const x = (shoulderCenter.x - 0.5) * (CONFIG.SKELETON.POSITION_SCALE_X || 4);
-        const y = -(shoulderCenter.y - 0.35) * (CONFIG.SKELETON.POSITION_SCALE_Y || 4) + 0.5;
-        const z = CONFIG.SKELETON.DEPTH_OFFSET + (shoulderCenter.z * 1.5);
+        // ✅ FIXED: Smaller multipliers
+        const x = (shoulderCenter.x - 0.5) * 4;
+        const y = -(shoulderCenter.y - 0.4) * 4;
+        const z = -1 + (shoulderCenter.z * 1.5);
 
         return { x, y, z };
     }
@@ -157,21 +154,18 @@ class SkeletonMapper {
         const rightShoulder = landmarks[L.RIGHT_SHOULDER];
 
         if (!leftShoulder || !rightShoulder) {
-            return CONFIG.JACKET.SCALE;  // Use config default
+            return 2.5;  // ✅ Default: small size
         }
 
         const dx = rightShoulder.x - leftShoulder.x;
         const dy = rightShoulder.y - leftShoulder.y;
         const shoulderWidth = Math.sqrt(dx * dx + dy * dy);
 
-        // ✅ CORRECTED: Smaller multiplier
-        const scale = shoulderWidth * (CONFIG.SKELETON.BASE_SCALE || 8.0);
-
-        // ✅ CORRECTED: Tighter range for torso only
-        const minScale = CONFIG.SKELETON.MIN_SCALE || 2.0;
-        const maxScale = CONFIG.SKELETON.MAX_SCALE || 4.0;
+        // ✅ CRITICAL FIX: Small multiplier
+        const scale = shoulderWidth * 6.0;  // Was 15.0 or 18.0
         
-        return Utils.clamp(scale, minScale, maxScale);
+        // ✅ CRITICAL FIX: Small range
+        return Utils.clamp(scale, 2.0, 4.0);  // Min 2, Max 4
     }
 
     applySmoothing(current, key, alpha) {
@@ -193,7 +187,7 @@ class SkeletonMapper {
 
     reset() {
         this.smoothBuffer = {
-            position: { x: 0, y: 0.5, z: -1 },
+            position: { x: 0, y: 0, z: 0 },
             rotation: { x: 0, y: Math.PI, z: 0 },
             scale: 2.5
         };
