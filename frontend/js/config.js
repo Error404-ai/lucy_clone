@@ -38,7 +38,7 @@ const CONFIG = {
     },
 
     JACKET: {
-        MODEL_PATH: 'assets/models/jacket.glb',
+        MODEL_PATH: 'assets/models/Jacket (2).glb',
         SCALE: 1.2,
         POSITION: { x: 0, y: 0, z: 0 },
         ROTATION: { x: 0, y: 0, z: 0 }

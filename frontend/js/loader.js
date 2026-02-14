@@ -71,7 +71,7 @@ class ModelLoader {
                         );
 
                         // ✅ Start HIDDEN (will be shown when fabric is selected)
-                        this.jacketModel.visible = false;
+                        this.jacketModel.visible = true;
                         console.log('📍 Jacket initially hidden (will show when fabric selected)');
 
                         // Add to scene
@@ -211,14 +211,17 @@ class ModelLoader {
         return this.jacketMeshes[0] || null;
     }
 
-    setVisible(visible) {
-        if (this.jacketModel) {
-            this.jacketMeshes.forEach(mesh => {
-                mesh.visible = visible;
-            });
-            console.log(`👁 Jacket visibility set to: ${visible}`);
-        }
-    }
+   setVisible(visible) {
+    if (!this.jacketModel) return;
+
+    this.jacketModel.visible = visible;
+
+    this.jacketMeshes.forEach(mesh => {
+        mesh.visible = visible;
+    });
+    console.log(`👁 Jacket visibility set to: ${visible}`);
+}
+
 
     setPosition(x, y, z) {
         if (this.jacketModel) {
