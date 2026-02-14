@@ -1,4 +1,4 @@
-// Configuration - CORRECTED for full body view
+// Configuration - EMERGENCY EXTREME SETTINGS
 
 const CONFIG = {
     API: {
@@ -29,18 +29,18 @@ const CONFIG = {
 
     SCENE: {
         BACKGROUND_COLOR: 0x000000,
-        CAMERA_FOV: 85, // ✅ MUCH WIDER (was 75, now 85)
+        CAMERA_FOV: 90, // 🔴 EXTREME WIDE (was 85)
         CAMERA_NEAR: 0.1,
         CAMERA_FAR: 2000,
-        CAMERA_DISTANCE: 12, // ✅ MUCH FURTHER back (was 8, now 12)
-        AMBIENT_LIGHT_INTENSITY: 0.6,
-        DIRECTIONAL_LIGHT_INTENSITY: 0.7
+        CAMERA_DISTANCE: 18, // 🔴 VERY FAR (was 12)
+        AMBIENT_LIGHT_INTENSITY: 0.8,
+        DIRECTIONAL_LIGHT_INTENSITY: 0.8
     },
 
     JACKET: {
         MODEL_PATH: 'assets/models/jacket.glb',
-        SCALE: 1.5, // ✅ LARGER default scale
-        POSITION: { x: 0, y: 0, z: 0 },
+        SCALE: 2.0, // 🔴 BIGGER (was 1.5)
+        POSITION: { x: 0, y: -1, z: 0 }, // 🔴 Lower starting position
         ROTATION: { x: 0, y: 0, z: 0 }
     },
 
@@ -54,7 +54,7 @@ const CONFIG = {
     },
 
     SKELETON: {
-        SMOOTHING_FACTOR: 0.2, // ✅ Less smoothing for more responsive
+        SMOOTHING_FACTOR: 0.15, // 🔴 Very responsive
         SCALE_MULTIPLIERS: {
             SHOULDERS: 1.0,
             TORSO: 1.0,
@@ -94,9 +94,9 @@ const CONFIG = {
     PERFORMANCE: {
         TARGET_FPS: 24,
         LOW_PERFORMANCE_THRESHOLD: 15,
-        RENDER_SCALE: 0.8, // ✅ Better quality
+        RENDER_SCALE: 1.0, // 🔴 Full quality
         ENABLE_STATS: true,
-        ADAPTIVE_QUALITY: true
+        ADAPTIVE_QUALITY: false
     },
 
     UI: {
@@ -110,7 +110,7 @@ const CONFIG = {
         SHOW_SKELETON_BONES: false,
         LOG_PERFORMANCE: true,
         ENABLE_ORBIT_CONTROLS: false,
-        VERBOSE: true // ✅ Enable verbose logging
+        VERBOSE: true
     }
 };
 

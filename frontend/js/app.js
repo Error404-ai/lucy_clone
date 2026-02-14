@@ -1,4 +1,4 @@
-// Main application entry point for Lucy Virtual Try-On
+// Main application entry point - EMERGENCY FIX
 
 class LucyApp {
     constructor() {
@@ -6,12 +6,10 @@ class LucyApp {
         this.isRunning = false;
     }
 
-    /**
-     * Initialize the application
-     */
     async init() {
         try {
             console.log('🎭 Starting Lucy Virtual Try-On...');
+            console.log('🔴 EMERGENCY MODE - Extra logging enabled');
             
             // Check browser support
             Utils.checkBrowserSupport();
@@ -32,31 +30,36 @@ class LucyApp {
             sceneManager.updateCamera(width, height);
             console.log('✓ Scene ready');
             
-            // Step 4: Load jacket model
+            // Step 4: Initialize materials manager FIRST
+            Utils.updateLoadingText('Initializing materials...');
+            materialsManager.init();
+            console.log('✓ Materials manager ready');
+            
+            // Step 5: Load jacket model
             Utils.updateLoadingText('Loading jacket model...');
             await modelLoader.loadJacket();
             console.log('✓ Jacket model loaded');
             
-            // Step 5: Initialize renderer
+            // Step 6: Initialize renderer
             Utils.updateLoadingText('Initializing renderer...');
             compositeRenderer.init(width, height);
             console.log('✓ Renderer ready');
             
-            // Step 6: Initialize skeleton mapper
+            // Step 7: Initialize skeleton mapper
             Utils.updateLoadingText('Setting up body tracking...');
             skeletonMapper.init(width, height);
             console.log('✓ Skeleton mapper ready');
             
-            // Step 7: Initialize fabric selector
+            // Step 8: Initialize fabric selector
             Utils.updateLoadingText('Loading fabrics...');
             await fabricSelector.init();
             console.log('✓ Fabric selector ready');
             
-            // Step 8: Initialize capture manager
+            // Step 9: Initialize capture manager
             captureManager.init();
             console.log('✓ Capture manager ready');
             
-            // Step 9: Initialize AI pipeline (optional)
+            // Step 10: Initialize AI pipeline (optional)
             Utils.updateLoadingText('Connecting to AI server...');
             await aiPipeline.init();
             console.log('✓ AI pipeline ready');
@@ -69,14 +72,12 @@ class LucyApp {
             
         } catch (error) {
             console.error('❌ Initialization failed:', error);
+            console.error('Stack:', error.stack);
             Utils.showError(error.message || 'Initialization failed');
             throw error;
         }
     }
 
-    /**
-     * Start the application
-     */
     async start() {
         if (!this.isInitialized) {
             throw new Error('App not initialized');
@@ -116,17 +117,11 @@ class LucyApp {
         }
     }
 
-    /**
-     * Handle pose updates
-     */
     onPoseUpdate(poseData) {
         // Update skeleton mapper with new pose data
         skeletonMapper.update(poseData);
     }
 
-    /**
-     * Show pose guide overlay
-     */
     showPoseGuide() {
         const guideEl = document.getElementById('pose-guide');
         if (guideEl) {
@@ -138,9 +133,6 @@ class LucyApp {
         }
     }
 
-    /**
-     * Stop the application
-     */
     stop() {
         console.log('Stopping application...');
         
@@ -155,26 +147,18 @@ class LucyApp {
         console.log('Application stopped');
     }
 
-    /**
-     * Restart the application
-     */
     async restart() {
         this.stop();
         await Utils.wait(1000);
         await this.start();
     }
 
-    /**
-     * Handle errors
-     */
     handleError(error) {
         console.error('Application error:', error);
+        console.error('Stack:', error.stack);
         Utils.showError(error.message || 'An error occurred');
     }
 
-    /**
-     * Get application status
-     */
     getStatus() {
         return {
             initialized: this.isInitialized,
@@ -200,7 +184,6 @@ function waitForMediaPipe() {
             }
         }, 100);
         
-        // Timeout after 10 seconds
         setTimeout(() => {
             clearInterval(checkInterval);
             resolve();

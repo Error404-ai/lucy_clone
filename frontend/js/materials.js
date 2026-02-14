@@ -1,13 +1,28 @@
-// Materials Manager - FIXED for proper fabric color application
+// Materials Manager - EMERGENCY FIX - No black screen
 
 class MaterialsManager {
     constructor() {
         this.currentMaterial = null;
         this.currentFabric = null;
+        this.defaultMaterial = null;
     }
 
     /**
-     * ✅ FIXED: Apply fabric to jacket meshes with proper color/texture handling
+     * Initialize with default material
+     */
+    init() {
+        // Create default material that always works
+        this.defaultMaterial = new THREE.MeshStandardMaterial({
+            color: 0x1a1a1a,
+            roughness: 0.8,
+            metalness: 0.0,
+            side: THREE.DoubleSide
+        });
+        console.log('✅ Default material created');
+    }
+
+    /**
+     * Apply fabric - SAFE version that won't break rendering
      */
     async applyFabric(fabricData) {
         try {
@@ -15,165 +30,120 @@ class MaterialsManager {
             
             const model = modelLoader.getModel();
             if (!model) {
-                throw new Error('Model not loaded');
+                console.error('❌ Model not loaded');
+                return false;
             }
 
             const jacketMeshes = modelLoader.getMeshes();
             
             if (jacketMeshes.length === 0) {
-                throw new Error('No jacket meshes found');
+                console.error('❌ No jacket meshes');
+                return false;
             }
 
-            // ✅ Create material based on fabric data
-            let material;
+            // Create new material SAFELY
+            let newMaterial;
             
-            if (fabricData.color) {
-                // ✅ Use solid color
-                material = this.createColorMaterial(fabricData);
-                console.log('✓ Created color material:', fabricData.color);
-            } else if (fabricData.diffuseUrl || fabricData.texture) {
-                // ✅ Use texture
-                material = await this.createTextureMaterial(fabricData);
-                console.log('✓ Created texture material');
-            } else {
-                // Fallback to default color
-                material = this.createColorMaterial({
-                    ...fabricData,
-                    color: '#808080'
-                });
-                console.log('✓ Created fallback material');
+            try {
+                if (fabricData.color) {
+                    // Parse color safely
+                    let colorValue;
+                    if (typeof fabricData.color === 'string') {
+                        colorValue = fabricData.color;
+                    } else {
+                        colorValue = '#808080'; // Fallback
+                    }
+                    
+                    newMaterial = new THREE.MeshStandardMaterial({
+                        color: colorValue,
+                        roughness: fabricData.roughness || 0.8,
+                        metalness: fabricData.metalness || 0.0,
+                        side: THREE.DoubleSide,
+                        flatShading: false,
+                        transparent: false,
+                        opacity: 1.0
+                    });
+                    
+                    console.log('✅ Created color material:', colorValue);
+                    
+                } else {
+                    // Use default material if no color
+                    newMaterial = this.defaultMaterial.clone();
+                    console.log('✅ Using default material');
+                }
+                
+            } catch (matError) {
+                console.error('❌ Material creation failed:', matError);
+                newMaterial = this.defaultMaterial.clone();
             }
 
-            // ✅ Apply to ALL jacket meshes
-            let applied = 0;
-            jacketMeshes.forEach(mesh => {
-                const oldMaterial = mesh.material;
-                
-                // Clone material for each mesh to avoid conflicts
-                mesh.material = material.clone();
-                mesh.material.needsUpdate = true;
-                
-                applied++;
-                console.log(`✓ Applied to: ${mesh.name}`);
-                
-                // Dispose old material
-                if (oldMaterial && oldMaterial !== material) {
-                    this.disposeMaterial(oldMaterial);
+            // Apply to meshes SAFELY - one at a time
+            let appliedCount = 0;
+            
+            for (const mesh of jacketMeshes) {
+                try {
+                    const oldMaterial = mesh.material;
+                    
+                    // Apply new material
+                    mesh.material = newMaterial.clone();
+                    mesh.material.needsUpdate = true;
+                    
+                    appliedCount++;
+                    console.log(`✅ Applied to mesh: ${mesh.name}`);
+                    
+                    // Dispose old material (but not default)
+                    if (oldMaterial && oldMaterial !== this.defaultMaterial) {
+                        try {
+                            oldMaterial.dispose();
+                        } catch (disposeError) {
+                            console.warn('⚠️ Could not dispose old material:', disposeError);
+                        }
+                    }
+                    
+                } catch (meshError) {
+                    console.error(`❌ Failed to apply to mesh ${mesh.name}:`, meshError);
                 }
-            });
+            }
 
-            this.currentMaterial = material;
-            this.currentFabric = fabricData;
-
-            // ✅ Show jacket immediately
-            modelLoader.setVisible(true);
-
-            console.log(`✅ Fabric "${fabricData.name}" applied to ${applied} mesh(es)`);
-            return true;
+            if (appliedCount > 0) {
+                this.currentMaterial = newMaterial;
+                this.currentFabric = fabricData;
+                
+                // Ensure jacket is visible
+                modelLoader.setVisible(true);
+                
+                console.log(`✅ Fabric "${fabricData.name}" applied to ${appliedCount} mesh(es)`);
+                
+                // Force a render
+                try {
+                    sceneManager.render();
+                } catch (renderError) {
+                    console.error('⚠️ Render error:', renderError);
+                }
+                
+                return true;
+            } else {
+                console.error('❌ No meshes were updated');
+                return false;
+            }
 
         } catch (error) {
-            console.error('❌ Error applying fabric:', error);
-            Utils.showError(`Could not apply fabric: ${error.message}`);
+            console.error('❌ CRITICAL ERROR in applyFabric:', error);
+            console.error('Stack:', error.stack);
+            
+            // Emergency recovery - try to restore default material
+            try {
+                const jacketMeshes = modelLoader.getMeshes();
+                jacketMeshes.forEach(mesh => {
+                    mesh.material = this.defaultMaterial.clone();
+                });
+                console.log('🔧 Emergency recovery applied');
+            } catch (recoveryError) {
+                console.error('❌ Recovery failed:', recoveryError);
+            }
+            
             return false;
         }
-    }
-
-    /**
-     * ✅ Create material from solid color
-     */
-    createColorMaterial(fabricData) {
-        return new THREE.MeshStandardMaterial({
-            color: new THREE.Color(fabricData.color),
-            roughness: fabricData.roughness || 0.8,
-            metalness: fabricData.metalness || 0.0,
-            side: THREE.DoubleSide,
-            flatShading: false,
-            wireframe: false,
-            transparent: false,
-            // ✅ Better lighting response
-            emissive: new THREE.Color(fabricData.color).multiplyScalar(0.1),
-            emissiveIntensity: 0.2
-        });
-    }
-
-    /**
-     * ✅ Create material from texture
-     */
-    async createTextureMaterial(fabricData) {
-        try {
-            // Load textures
-            const textures = await Promise.all([
-                fabricData.diffuseUrl ? this.loadTexture(fabricData.diffuseUrl) : null,
-                fabricData.normalUrl ? this.loadTexture(fabricData.normalUrl) : null,
-                fabricData.roughnessUrl ? this.loadTexture(fabricData.roughnessUrl) : null
-            ]);
-
-            const [diffuseMap, normalMap, roughnessMap] = textures;
-
-            // Configure textures
-            [diffuseMap, normalMap, roughnessMap].forEach(tex => {
-                if (tex) {
-                    tex.wrapS = THREE.RepeatWrapping;
-                    tex.wrapT = THREE.RepeatWrapping;
-                    tex.repeat.set(
-                        CONFIG.FABRIC.DEFAULT_REPEAT.u,
-                        CONFIG.FABRIC.DEFAULT_REPEAT.v
-                    );
-                }
-            });
-
-            return new THREE.MeshStandardMaterial({
-                map: diffuseMap,
-                normalMap: normalMap,
-                roughnessMap: roughnessMap,
-                roughness: fabricData.roughness || 0.8,
-                metalness: fabricData.metalness || 0.0,
-                side: THREE.DoubleSide,
-                flatShading: false,
-                transparent: false
-            });
-
-        } catch (error) {
-            console.error('Error loading textures:', error);
-            // Fallback to color
-            return this.createColorMaterial({
-                ...fabricData,
-                color: fabricData.color || '#808080'
-            });
-        }
-    }
-
-    /**
-     * Load texture
-     */
-    async loadTexture(url) {
-        return new Promise((resolve, reject) => {
-            new THREE.TextureLoader().load(
-                url,
-                (texture) => {
-                    texture.colorSpace = THREE.SRGBColorSpace;
-                    texture.flipY = false;
-                    resolve(texture);
-                },
-                undefined,
-                (error) => {
-                    console.warn('Texture load failed:', url);
-                    resolve(null); // Don't reject, just return null
-                }
-            );
-        });
-    }
-
-    /**
-     * Dispose material
-     */
-    disposeMaterial(material) {
-        if (!material) return;
-        
-        if (material.map) material.map.dispose();
-        if (material.normalMap) material.normalMap.dispose();
-        if (material.roughnessMap) material.roughnessMap.dispose();
-        material.dispose();
     }
 
     /**
@@ -184,13 +154,30 @@ class MaterialsManager {
     }
 
     /**
-     * Update current material properties
+     * Reset to default material
      */
-    updateMaterialProperties(properties) {
-        if (!this.currentMaterial) return;
+    reset() {
+        try {
+            const jacketMeshes = modelLoader.getMeshes();
+            jacketMeshes.forEach(mesh => {
+                mesh.material = this.defaultMaterial.clone();
+            });
+            console.log('✅ Materials reset to default');
+        } catch (error) {
+            console.error('❌ Reset failed:', error);
+        }
+    }
 
-        Object.assign(this.currentMaterial, properties);
-        this.currentMaterial.needsUpdate = true;
+    /**
+     * Dispose all materials
+     */
+    dispose() {
+        if (this.currentMaterial && this.currentMaterial !== this.defaultMaterial) {
+            this.currentMaterial.dispose();
+        }
+        if (this.defaultMaterial) {
+            this.defaultMaterial.dispose();
+        }
     }
 }
 
