@@ -1,4 +1,4 @@
-// Skeleton Mapper - BALANCED for face + jacket visibility
+// Skeleton Mapper - EMERGENCY FIX for mobile visibility
 
 class EnhancedSkeletonMapper {
     constructor() {
@@ -8,6 +8,7 @@ class EnhancedSkeletonMapper {
         this.lastPose = null;
         this.hasShownJacket = false;
         this.updateCount = 0;
+        this.forceShowAttempts = 0;
         
         this.smoothBuffer = {
             position: { x: 0, y: 0, z: 0 },
@@ -15,25 +16,30 @@ class EnhancedSkeletonMapper {
             scale: 1
         };
         
-        // ✅ BALANCED calibration - face + jacket both visible
+        // 🔴 MOBILE-OPTIMIZED calibration
         this.calibration = {
-            scaleMultiplier: 14.0, // ✅ Moderate (was 25)
-            depthOffset: -1.5, // ✅ Behind camera (was +0.5)
-            depthMultiplier: 3.5,
-            verticalOffset: -0.5, // ✅ At shoulders (was -2.0)
+            scaleMultiplier: 16.0,
+            depthOffset: -0.5,
+            depthMultiplier: 3.0,
+            verticalOffset: -0.8,
             horizontalOffset: 0.0,
-            smoothingAlpha: 0.25
+            smoothingAlpha: 0.2
         };
         
         this.isTracking = false;
-        this.minConfidence = 0.4;
+        this.minConfidence = 0.3;
     }
 
     init(width, height) {
         this.width = width;
         this.height = height;
         this.initialized = true;
-        console.log("✅ Skeleton Mapper initialized");
+        console.log("✅ Skeleton Mapper initialized:", width, "x", height);
+        
+        // 🔴 FORCE show jacket after short delay
+        setTimeout(() => {
+            this.forceShowJacketNow();
+        }, 2000);
     }
 
     update(poseData) {
@@ -47,14 +53,18 @@ class EnhancedSkeletonMapper {
         const jacket = modelLoader.getModel();
         if (!jacket) return;
 
-        // Show jacket after 5 frames
-        if (!this.hasShownJacket && this.updateCount > 5) {
+        // 🔴 AGGRESSIVE force show
+        if (this.updateCount % 30 === 0 && !jacket.visible) {
+            console.log('🔴 FORCING jacket visible at frame', this.updateCount);
             jacket.visible = true;
             this.hasShownJacket = true;
-            console.log('✅ Jacket visible');
         }
 
-        const confidence = this.calculateConfidence(landmarks);
+        if (!this.hasShownJacket && this.updateCount > 3) {
+            jacket.visible = true;
+            this.hasShownJacket = true;
+            console.log('🔴 Initial show at frame', this.updateCount);
+        }
 
         try {
             const position = this.calculateShoulderPosition(landmarks);
@@ -76,14 +86,17 @@ class EnhancedSkeletonMapper {
             this.isTracking = true;
             this.lastPose = poseData;
 
+            if (this.updateCount % 60 === 0) {
+                console.log(`📍 pos(${smoothPos.x.toFixed(1)}, ${smoothPos.y.toFixed(1)}, ${smoothPos.z.toFixed(1)}), scale: ${smoothScale.toFixed(1)}, visible: ${jacket.visible}`);
+            }
+
         } catch (error) {
-            console.error('Skeleton update error:', error);
+            console.error('❌ Update error:', error);
         }
     }
 
     calculateShoulderPosition(landmarks) {
         const L = CONFIG.SKELETON.LANDMARKS;
-        
         const leftShoulder = landmarks[L.LEFT_SHOULDER];
         const rightShoulder = landmarks[L.RIGHT_SHOULDER];
         
@@ -100,9 +113,8 @@ class EnhancedSkeletonMapper {
         const nose = landmarks[L.NOSE];
         const avgDepth = nose ? (leftShoulder.z + rightShoulder.z + nose.z) / 3 : shoulderCenter.z;
 
-        // ✅ BALANCED position multipliers
-        const x = (shoulderCenter.x - 0.5) * 12 + this.calibration.horizontalOffset;
-        const y = -(shoulderCenter.y - 0.5) * 12 + this.calibration.verticalOffset;
+        const x = (shoulderCenter.x - 0.5) * 14 + this.calibration.horizontalOffset;
+        const y = -(shoulderCenter.y - 0.5) * 14 + this.calibration.verticalOffset;
         const z = this.calibration.depthOffset + (avgDepth * this.calibration.depthMultiplier);
 
         return { x, y, z };
@@ -110,7 +122,6 @@ class EnhancedSkeletonMapper {
 
     calculateBodyRotation(landmarks) {
         const L = CONFIG.SKELETON.LANDMARKS;
-        
         const leftShoulder = landmarks[L.LEFT_SHOULDER];
         const rightShoulder = landmarks[L.RIGHT_SHOULDER];
         
@@ -135,12 +146,11 @@ class EnhancedSkeletonMapper {
 
     calculateShoulderScale(landmarks) {
         const L = CONFIG.SKELETON.LANDMARKS;
-        
         const leftShoulder = landmarks[L.LEFT_SHOULDER];
         const rightShoulder = landmarks[L.RIGHT_SHOULDER];
         
         if (!leftShoulder || !rightShoulder) {
-            return 8.0;
+            return 10.0;
         }
 
         const dx = rightShoulder.x - leftShoulder.x;
@@ -149,9 +159,7 @@ class EnhancedSkeletonMapper {
         const shoulderWidth = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
         let scale = shoulderWidth * this.calibration.scaleMultiplier;
-
-        // ✅ BALANCED scale range
-        return Utils.clamp(scale, 5.0, 15.0);
+        return Utils.clamp(scale, 6.0, 18.0);
     }
 
     applySmoothing(current, key) {
@@ -170,12 +178,7 @@ class EnhancedSkeletonMapper {
 
     calculateConfidence(landmarks) {
         const L = CONFIG.SKELETON.LANDMARKS;
-        
-        const keyPoints = [
-            L.LEFT_SHOULDER, L.RIGHT_SHOULDER,
-            L.LEFT_ELBOW, L.RIGHT_ELBOW,
-            L.NOSE
-        ];
+        const keyPoints = [L.LEFT_SHOULDER, L.RIGHT_SHOULDER, L.LEFT_ELBOW, L.RIGHT_ELBOW, L.NOSE];
         
         let totalVisibility = 0;
         let validPoints = 0;
@@ -192,36 +195,49 @@ class EnhancedSkeletonMapper {
     }
 
     forceShowJacket() {
+        this.forceShowJacketNow();
+    }
+
+    forceShowJacketNow() {
+        this.forceShowAttempts++;
         const jacket = modelLoader.getModel();
+        
         if (jacket) {
             jacket.visible = true;
             this.hasShownJacket = true;
+            jacket.position.set(0, -0.8, -0.5);
+            jacket.scale.set(10, 10, 10);
+            
+            console.log(`🔴 FORCE SHOW JACKET (attempt ${this.forceShowAttempts})`);
+            console.log('   Position:', jacket.position);
+            console.log('   Scale:', jacket.scale);
+            console.log('   Visible:', jacket.visible);
+        } else {
+            console.error('❌ Jacket model not loaded');
         }
     }
 
     reset() {
-        this.smoothBuffer = {
-            position: { x: 0, y: 0, z: 0 },
-            rotation: { x: 0, y: 0, z: 0 },
-            scale: 1
-        };
+        this.smoothBuffer = { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: 1 };
         this.lastPose = null;
         this.isTracking = false;
         this.hasShownJacket = false;
         this.updateCount = 0;
+        this.forceShowAttempts = 0;
     }
 
     getTrackingStatus() {
         return {
             isTracking: this.isTracking,
             hasShownJacket: this.hasShownJacket,
-            updateCount: this.updateCount
+            updateCount: this.updateCount,
+            forceShowAttempts: this.forceShowAttempts
         };
     }
 
     updateCalibration(params) {
         Object.assign(this.calibration, params);
-        console.log('Calibration updated:', params);
+        console.log('📐 Calibration updated:', params);
     }
 }
 

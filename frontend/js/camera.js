@@ -1,4 +1,4 @@
-// Camera capture module for Lucy Virtual Try-On
+// Camera Manager - FIXED with better permission handling
 
 class CameraManager {
     constructor() {
@@ -9,17 +9,16 @@ class CameraManager {
         this.currentDeviceId = null;
     }
 
-    /**
-     * Initialize and start camera
-     */
     async init() {
         try {
-            console.log('Initializing camera...');
+            console.log('🎥 Initializing camera...');
             
-            // Get available devices
-            await this.getDevices();
+            // Check if mediaDevices is supported
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                throw new Error('Camera API not supported in this browser');
+            }
             
-            // Request camera access
+            // Request camera access with better constraints
             const constraints = {
                 video: {
                     width: { ideal: CONFIG.CAMERA.WIDTH },
@@ -30,20 +29,33 @@ class CameraManager {
                 audio: false
             };
 
+            console.log('📸 Requesting camera access...');
             this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+            
+            console.log('✅ Camera access granted');
             this.video.srcObject = this.stream;
             
             // Wait for video to be ready
-            await new Promise((resolve) => {
+            await new Promise((resolve, reject) => {
                 this.video.onloadedmetadata = () => {
-                    this.video.play();
-                    resolve();
+                    this.video.play()
+                        .then(() => {
+                            console.log('✅ Video playing');
+                            resolve();
+                        })
+                        .catch(reject);
                 };
+                
+                // Timeout after 10 seconds
+                setTimeout(() => reject(new Error('Video load timeout')), 10000);
             });
+
+            // Get available devices AFTER getting permission
+            await this.getDevices();
 
             this.isActive = true;
             Utils.updateStatus('camera', true);
-            console.log('Camera initialized successfully');
+            console.log('✅ Camera initialized:', this.video.videoWidth, 'x', this.video.videoHeight);
             
             return {
                 width: this.video.videoWidth,
@@ -51,27 +63,68 @@ class CameraManager {
             };
             
         } catch (error) {
-            console.error('Camera initialization failed:', error);
+            console.error('❌ Camera initialization failed:', error);
             Utils.updateStatus('camera', false);
             
+            // Better error messages
             if (error.name === 'NotAllowedError') {
-                throw new Error('Camera access denied. Please allow camera permissions.');
+                throw new Error('Camera access denied. Please allow camera permissions and refresh the page.');
             } else if (error.name === 'NotFoundError') {
-                throw new Error('No camera found on this device.');
+                throw new Error('No camera found. Please connect a camera or use a device with a camera.');
+            } else if (error.name === 'NotReadableError') {
+                throw new Error('Camera is being used by another application. Please close other apps and refresh.');
+            } else if (error.name === 'OverconstrainedError') {
+                // Try again with minimal constraints
+                console.log('⚠️ Trying with minimal constraints...');
+                return await this.initWithMinimalConstraints();
             } else {
                 throw new Error(`Camera error: ${error.message}`);
             }
         }
     }
 
-    /**
-     * Get list of available camera devices
-     */
+    async initWithMinimalConstraints() {
+        try {
+            // Fallback: minimal constraints
+            const constraints = {
+                video: true,
+                audio: false
+            };
+
+            console.log('📸 Requesting camera with minimal constraints...');
+            this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+            this.video.srcObject = this.stream;
+            
+            await new Promise((resolve) => {
+                this.video.onloadedmetadata = () => {
+                    this.video.play();
+                    resolve();
+                };
+            });
+
+            await this.getDevices();
+
+            this.isActive = true;
+            Utils.updateStatus('camera', true);
+            console.log('✅ Camera initialized (minimal constraints)');
+            
+            return {
+                width: this.video.videoWidth,
+                height: this.video.videoHeight
+            };
+        } catch (error) {
+            throw new Error(`Camera fallback failed: ${error.message}`);
+        }
+    }
+
     async getDevices() {
         try {
             const devices = await navigator.mediaDevices.enumerateDevices();
             this.devices = devices.filter(device => device.kind === 'videoinput');
-            console.log(`Found ${this.devices.length} camera(s)`);
+            console.log(`✅ Found ${this.devices.length} camera(s):`);
+            this.devices.forEach((device, i) => {
+                console.log(`  ${i + 1}. ${device.label || 'Camera ' + (i + 1)}`);
+            });
             return this.devices;
         } catch (error) {
             console.error('Error getting devices:', error);
@@ -79,17 +132,12 @@ class CameraManager {
         }
     }
 
-    /**
-     * Switch to different camera
-     */
     async switchCamera(deviceId) {
         if (!deviceId || deviceId === this.currentDeviceId) return;
         
         try {
-            // Stop current stream
             this.stop();
             
-            // Start new stream with specified device
             const constraints = {
                 video: {
                     deviceId: { exact: deviceId },
@@ -113,7 +161,7 @@ class CameraManager {
 
             this.isActive = true;
             Utils.updateStatus('camera', true);
-            console.log('Switched to camera:', deviceId);
+            console.log('✅ Switched to camera:', deviceId);
             
         } catch (error) {
             console.error('Error switching camera:', error);
@@ -121,9 +169,6 @@ class CameraManager {
         }
     }
 
-    /**
-     * Get current video frame as ImageData
-     */
     getFrame() {
         if (!this.isActive) return null;
 
@@ -137,9 +182,6 @@ class CameraManager {
         return ctx.getImageData(0, 0, canvas.width, canvas.height);
     }
 
-    /**
-     * Get current video frame as canvas
-     */
     getFrameCanvas() {
         if (!this.isActive) return null;
 
@@ -153,9 +195,6 @@ class CameraManager {
         return canvas;
     }
 
-    /**
-     * Capture current frame as blob
-     */
     async captureFrame(format = 'image/jpeg', quality = 0.95) {
         if (!this.isActive) return null;
 
@@ -163,18 +202,12 @@ class CameraManager {
         return await Utils.canvasToBlob(canvas, format, quality);
     }
 
-    /**
-     * Capture current frame as base64
-     */
     async captureFrameBase64(format = 'image/jpeg', quality = 0.95) {
         const blob = await this.captureFrame(format, quality);
         if (!blob) return null;
         return await Utils.blobToBase64(blob);
     }
 
-    /**
-     * Get video dimensions
-     */
     getDimensions() {
         return {
             width: this.video.videoWidth,
@@ -182,16 +215,10 @@ class CameraManager {
         };
     }
 
-    /**
-     * Check if camera is active
-     */
     isReady() {
         return this.isActive && this.video.readyState === this.video.HAVE_ENOUGH_DATA;
     }
 
-    /**
-     * Stop camera
-     */
     stop() {
         if (this.stream) {
             this.stream.getTracks().forEach(track => track.stop());
@@ -202,18 +229,12 @@ class CameraManager {
         console.log('Camera stopped');
     }
 
-    /**
-     * Pause camera
-     */
     pause() {
         if (this.video) {
             this.video.pause();
         }
     }
 
-    /**
-     * Resume camera
-     */
     resume() {
         if (this.video && this.isActive) {
             this.video.play();
@@ -221,5 +242,4 @@ class CameraManager {
     }
 }
 
-// Create global instance
 const cameraManager = new CameraManager();
