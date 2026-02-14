@@ -1,4 +1,4 @@
-// Camera Manager - FIXED with better permission handling
+// Camera Manager - FIXED with demo mode for no-camera scenarios
 
 class CameraManager {
     constructor() {
@@ -7,6 +7,9 @@ class CameraManager {
         this.isActive = false;
         this.devices = [];
         this.currentDeviceId = null;
+        this.isDemoMode = false;
+        this.demoCanvas = null;
+        this.demoCtx = null;
     }
 
     async init() {
@@ -15,7 +18,22 @@ class CameraManager {
             
             // Check if mediaDevices is supported
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                throw new Error('Camera API not supported in this browser');
+                console.warn('⚠️ Camera API not supported - entering demo mode');
+                return await this.initDemoMode();
+            }
+            
+            // First, enumerate devices to see what's available
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(d => d.kind === 'videoinput');
+                console.log(`📹 Found ${videoDevices.length} video input device(s)`);
+                
+                if (videoDevices.length === 0) {
+                    console.warn('⚠️ No camera devices found - entering demo mode');
+                    return await this.initDemoMode();
+                }
+            } catch (enumError) {
+                console.warn('⚠️ Could not enumerate devices:', enumError);
             }
             
             // Request camera access with better constraints
@@ -66,15 +84,15 @@ class CameraManager {
             console.error('❌ Camera initialization failed:', error);
             Utils.updateStatus('camera', false);
             
-            // Better error messages
+            // Better error messages and fallbacks
             if (error.name === 'NotAllowedError') {
                 throw new Error('Camera access denied. Please allow camera permissions and refresh the page.');
             } else if (error.name === 'NotFoundError') {
-                throw new Error('No camera found. Please connect a camera or use a device with a camera.');
+                console.warn('⚠️ No camera found - entering demo mode');
+                return await this.initDemoMode();
             } else if (error.name === 'NotReadableError') {
                 throw new Error('Camera is being used by another application. Please close other apps and refresh.');
             } else if (error.name === 'OverconstrainedError') {
-                // Try again with minimal constraints
                 console.log('⚠️ Trying with minimal constraints...');
                 return await this.initWithMinimalConstraints();
             } else {
@@ -83,9 +101,85 @@ class CameraManager {
         }
     }
 
+    async initDemoMode() {
+        console.log('🎬 Initializing DEMO MODE (no camera)');
+        
+        // Create a canvas as fake video feed
+        const canvas = document.createElement('canvas');
+        canvas.width = CONFIG.CAMERA.WIDTH || 640;
+        canvas.height = CONFIG.CAMERA.HEIGHT || 480;
+        
+        const ctx = canvas.getContext('2d');
+        
+        // Draw a gradient background with text
+        const drawDemoFrame = () => {
+            // Gradient background
+            const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+            gradient.addColorStop(0, '#1E293B');
+            gradient.addColorStop(1, '#0F172A');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Add text
+            ctx.fillStyle = '#64748B';
+            ctx.font = 'bold 24px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('DEMO MODE', canvas.width / 2, canvas.height / 2 - 40);
+            
+            ctx.font = '16px Inter, sans-serif';
+            ctx.fillStyle = '#94A3B8';
+            ctx.fillText('No camera detected', canvas.width / 2, canvas.height / 2);
+            ctx.fillText('Jacket will appear in center', canvas.width / 2, canvas.height / 2 + 30);
+            
+            // Add a simple silhouette
+            ctx.strokeStyle = '#475569';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            // Head
+            ctx.arc(canvas.width / 2, canvas.height / 2 - 80, 30, 0, Math.PI * 2);
+            ctx.stroke();
+            // Body
+            ctx.beginPath();
+            ctx.moveTo(canvas.width / 2, canvas.height / 2 - 50);
+            ctx.lineTo(canvas.width / 2, canvas.height / 2 + 60);
+            ctx.stroke();
+            // Arms
+            ctx.beginPath();
+            ctx.moveTo(canvas.width / 2, canvas.height / 2 - 30);
+            ctx.lineTo(canvas.width / 2 - 60, canvas.height / 2 + 20);
+            ctx.moveTo(canvas.width / 2, canvas.height / 2 - 30);
+            ctx.lineTo(canvas.width / 2 + 60, canvas.height / 2 + 20);
+            ctx.stroke();
+        };
+        
+        // Draw initial frame
+        drawDemoFrame();
+        
+        // Capture canvas as stream
+        this.stream = canvas.captureStream(30);
+        this.video.srcObject = this.stream;
+        this.demoCanvas = canvas;
+        this.demoCtx = ctx;
+        this.isDemoMode = true;
+        
+        // Animate demo mode
+        setInterval(drawDemoFrame, 100);
+        
+        await this.video.play();
+        
+        this.isActive = true;
+        Utils.updateStatus('camera', true);
+        console.log('✅ Demo mode initialized:', canvas.width, 'x', canvas.height);
+        Utils.showError('Running in demo mode - connect camera for full experience');
+        
+        return {
+            width: canvas.width,
+            height: canvas.height
+        };
+    }
+
     async initWithMinimalConstraints() {
         try {
-            // Fallback: minimal constraints
             const constraints = {
                 video: true,
                 audio: false
@@ -113,7 +207,8 @@ class CameraManager {
                 height: this.video.videoHeight
             };
         } catch (error) {
-            throw new Error(`Camera fallback failed: ${error.message}`);
+            console.warn('⚠️ Minimal constraints also failed - entering demo mode');
+            return await this.initDemoMode();
         }
     }
 
@@ -133,7 +228,7 @@ class CameraManager {
     }
 
     async switchCamera(deviceId) {
-        if (!deviceId || deviceId === this.currentDeviceId) return;
+        if (!deviceId || deviceId === this.currentDeviceId || this.isDemoMode) return;
         
         try {
             this.stop();
