@@ -1,4 +1,4 @@
-// Configuration - BALANCED for face + jacket visibility
+// Configuration - CORRECTED FOR FACE VISIBILITY
 
 const CONFIG = {
     API: {
@@ -23,25 +23,25 @@ const CONFIG = {
     CAMERA: {
         WIDTH: 640,
         HEIGHT: 480,
-        FRAME_RATE: 24,
+        FRAME_RATE: 30,
         FACING_MODE: 'user'
     },
 
     SCENE: {
         BACKGROUND_COLOR: 0x000000,
-        CAMERA_FOV: 75, // ✅ BALANCED
+        CAMERA_FOV: 60,          // ✅ Balanced - see face + torso
         CAMERA_NEAR: 0.1,
         CAMERA_FAR: 2000,
-        CAMERA_DISTANCE: 10, // ✅ BALANCED  
-        AMBIENT_LIGHT_INTENSITY: 0.7,
-        DIRECTIONAL_LIGHT_INTENSITY: 0.7
+        CAMERA_DISTANCE: 5,      // ✅ Far enough to see both
+        AMBIENT_LIGHT_INTENSITY: 0.9,
+        DIRECTIONAL_LIGHT_INTENSITY: 0.8
     },
 
     JACKET: {
         MODEL_PATH: 'assets/models/Jacket (2).glb',
-        SCALE: 1.2,
-        POSITION: { x: 0, y: 0, z: 0 },
-        ROTATION: { x: 0, y: 0, z: 0 }
+        SCALE: 2.5,              // ✅ FIXED: Smaller - torso only
+        POSITION: { x: 0, y: 0.5, z: -1 },  // ✅ FIXED: Upper body
+        ROTATION: { x: 0, y: Math.PI, z: 0 }
     },
 
     POSE: {
@@ -54,12 +54,26 @@ const CONFIG = {
     },
 
     SKELETON: {
-        SMOOTHING_FACTOR: 0.25,
+        SMOOTHING_FACTOR: 0.2,
         SCALE_MULTIPLIERS: {
             SHOULDERS: 1.0,
             TORSO: 1.0,
             ARMS: 1.0
         },
+        // ✅ FIXED: Better positioning for face visibility
+        BASE_SCALE: 8.0,         // Reduced from 15.0
+        DEPTH_OFFSET: -1.0,      // Closer than -2.0
+        VERTICAL_OFFSET: 0.5,    // Raised up from 0.0
+        HORIZONTAL_OFFSET: 0.0,
+        
+        // Position multipliers - REDUCED for smaller range
+        POSITION_SCALE_X: 4.0,   // Was 6.0 or 16.0
+        POSITION_SCALE_Y: 4.0,   // Was 6.0 or 16.0
+        
+        // Scale range - TIGHTER for torso only
+        MIN_SCALE: 2.0,          // Was 8.0
+        MAX_SCALE: 4.0,          // Was 20.0
+        
         LANDMARKS: {
             NOSE: 0,
             LEFT_EYE: 2,
@@ -76,11 +90,11 @@ const CONFIG = {
     },
 
     AI_PIPELINE: {
-        ENABLED: false,
-        KEYFRAME_INTERVAL: 3000,
+        ENABLED: true,
+        KEYFRAME_INTERVAL: 2000,
         MAX_BLEND_ALPHA: 0.7,
         BLEND_TRANSITION_DURATION: 500,
-        JPEG_QUALITY: 0.6,
+        JPEG_QUALITY: 0.7,
         MAX_RECONNECT_ATTEMPTS: 3,
         RECONNECT_DELAY: 5000
     },
@@ -94,23 +108,23 @@ const CONFIG = {
     PERFORMANCE: {
         TARGET_FPS: 30,
         LOW_PERFORMANCE_THRESHOLD: 20,
-        RENDER_SCALE: 0.9,
+        RENDER_SCALE: 1.0,
         ENABLE_STATS: true,
-        ADAPTIVE_QUALITY: true
+        ADAPTIVE_QUALITY: false
     },
 
     UI: {
-        POSE_GUIDE_DURATION: 3000,
+        POSE_GUIDE_DURATION: 2000,
         HIDE_CONTROLS_DELAY: 5000,
         TOAST_DURATION: 3000
     },
 
     DEBUG: {
         SHOW_POSE_LANDMARKS: false,
-        SHOW_SKELETON_BONES: false,
-        LOG_PERFORMANCE: false,
+        SHOW_SKELETON_BONES: true,
+        LOG_PERFORMANCE: true,
         ENABLE_ORBIT_CONTROLS: false,
-        VERBOSE: false
+        VERBOSE: true
     }
 };
 
