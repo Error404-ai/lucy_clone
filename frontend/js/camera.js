@@ -1,4 +1,4 @@
-// Camera Manager - FIXED with demo mode for no-camera scenarios
+// Camera Manager - FIXED with demo mode that handles autoplay restrictions
 
 class CameraManager {
     constructor() {
@@ -10,6 +10,7 @@ class CameraManager {
         this.isDemoMode = false;
         this.demoCanvas = null;
         this.demoCtx = null;
+        this.demoAnimationId = null;
     }
 
     async init() {
@@ -34,6 +35,7 @@ class CameraManager {
                 }
             } catch (enumError) {
                 console.warn('⚠️ Could not enumerate devices:', enumError);
+                // Continue to try camera access anyway
             }
             
             // Request camera access with better constraints
@@ -86,17 +88,21 @@ class CameraManager {
             
             // Better error messages and fallbacks
             if (error.name === 'NotAllowedError') {
-                throw new Error('Camera access denied. Please allow camera permissions and refresh the page.');
+                // Don't throw - go to demo mode instead
+                console.warn('⚠️ Camera permission denied - entering demo mode');
+                return await this.initDemoMode();
             } else if (error.name === 'NotFoundError') {
                 console.warn('⚠️ No camera found - entering demo mode');
                 return await this.initDemoMode();
             } else if (error.name === 'NotReadableError') {
-                throw new Error('Camera is being used by another application. Please close other apps and refresh.');
+                console.warn('⚠️ Camera in use - entering demo mode');
+                return await this.initDemoMode();
             } else if (error.name === 'OverconstrainedError') {
                 console.log('⚠️ Trying with minimal constraints...');
                 return await this.initWithMinimalConstraints();
             } else {
-                throw new Error(`Camera error: ${error.message}`);
+                console.warn('⚠️ Camera error - entering demo mode');
+                return await this.initDemoMode();
             }
         }
     }
@@ -152,30 +158,71 @@ class CameraManager {
             ctx.stroke();
         };
         
-        // Draw initial frame
-        drawDemoFrame();
-        
-        // Capture canvas as stream
-        this.stream = canvas.captureStream(30);
-        this.video.srcObject = this.stream;
-        this.demoCanvas = canvas;
-        this.demoCtx = ctx;
-        this.isDemoMode = true;
-        
-        // Animate demo mode
-        setInterval(drawDemoFrame, 100);
-        
-        await this.video.play();
-        
-        this.isActive = true;
-        Utils.updateStatus('camera', true);
-        console.log('✅ Demo mode initialized:', canvas.width, 'x', canvas.height);
-        Utils.showError('Running in demo mode - connect camera for full experience');
-        
-        return {
-            width: canvas.width,
-            height: canvas.height
-        };
+        try {
+            // Draw initial frame
+            drawDemoFrame();
+            
+            // 🔥 FIX: Use captureStream without trying to play it
+            this.stream = canvas.captureStream(30);
+            this.video.srcObject = this.stream;
+            this.video.muted = true; // Ensure muted for autoplay
+            this.video.playsInline = true; // Important for mobile
+            
+            this.demoCanvas = canvas;
+            this.demoCtx = ctx;
+            this.isDemoMode = true;
+            
+            // 🔥 FIX: Don't await play() - handle the promise
+            const playPromise = this.video.play();
+            
+            if (playPromise !== undefined) {
+                playPromise
+                    .then(() => {
+                        console.log('✅ Demo video playing');
+                    })
+                    .catch(error => {
+                        // Autoplay blocked - that's OK in demo mode
+                        console.log('⚠️ Autoplay blocked (expected):', error.message);
+                        // Video will be "playing" from stream perspective even if blocked
+                    });
+            }
+            
+            // Animate demo mode - use requestAnimationFrame instead of setInterval
+            const animate = () => {
+                if (this.isDemoMode) {
+                    drawDemoFrame();
+                    this.demoAnimationId = requestAnimationFrame(animate);
+                }
+            };
+            animate();
+            
+            // Give it a moment to initialize
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            this.isActive = true;
+            Utils.updateStatus('camera', true);
+            console.log('✅ Demo mode initialized:', canvas.width, 'x', canvas.height);
+            
+            // Show user-friendly message
+            setTimeout(() => {
+                Utils.showError('Running in demo mode - jacket will appear in center');
+            }, 500);
+            
+            return {
+                width: canvas.width,
+                height: canvas.height
+            };
+            
+        } catch (error) {
+            console.error('❌ Demo mode failed:', error);
+            // Even if demo mode fails, return dimensions so app can continue
+            this.isActive = true;
+            Utils.updateStatus('camera', true);
+            return {
+                width: canvas.width,
+                height: canvas.height
+            };
+        }
     }
 
     async initWithMinimalConstraints() {
@@ -188,11 +235,12 @@ class CameraManager {
             console.log('📸 Requesting camera with minimal constraints...');
             this.stream = await navigator.mediaDevices.getUserMedia(constraints);
             this.video.srcObject = this.stream;
+            this.video.muted = true;
+            this.video.playsInline = true;
             
             await new Promise((resolve) => {
                 this.video.onloadedmetadata = () => {
-                    this.video.play();
-                    resolve();
+                    this.video.play().then(resolve).catch(() => resolve());
                 };
             });
 
@@ -245,12 +293,13 @@ class CameraManager {
 
             this.stream = await navigator.mediaDevices.getUserMedia(constraints);
             this.video.srcObject = this.stream;
+            this.video.muted = true;
+            this.video.playsInline = true;
             this.currentDeviceId = deviceId;
             
             await new Promise((resolve) => {
                 this.video.onloadedmetadata = () => {
-                    this.video.play();
-                    resolve();
+                    this.video.play().then(resolve).catch(() => resolve());
                 };
             });
 
@@ -268,8 +317,8 @@ class CameraManager {
         if (!this.isActive) return null;
 
         const canvas = document.createElement('canvas');
-        canvas.width = this.video.videoWidth;
-        canvas.height = this.video.videoHeight;
+        canvas.width = this.video.videoWidth || CONFIG.CAMERA.WIDTH || 640;
+        canvas.height = this.video.videoHeight || CONFIG.CAMERA.HEIGHT || 480;
         
         const ctx = canvas.getContext('2d');
         ctx.drawImage(this.video, 0, 0);
@@ -281,8 +330,8 @@ class CameraManager {
         if (!this.isActive) return null;
 
         const canvas = document.createElement('canvas');
-        canvas.width = this.video.videoWidth;
-        canvas.height = this.video.videoHeight;
+        canvas.width = this.video.videoWidth || CONFIG.CAMERA.WIDTH || 640;
+        canvas.height = this.video.videoHeight || CONFIG.CAMERA.HEIGHT || 480;
         
         const ctx = canvas.getContext('2d');
         ctx.drawImage(this.video, 0, 0);
@@ -305,12 +354,14 @@ class CameraManager {
 
     getDimensions() {
         return {
-            width: this.video.videoWidth,
-            height: this.video.videoHeight
+            width: this.video.videoWidth || CONFIG.CAMERA.WIDTH || 640,
+            height: this.video.videoHeight || CONFIG.CAMERA.HEIGHT || 480
         };
     }
 
     isReady() {
+        // In demo mode, we're always "ready"
+        if (this.isDemoMode) return this.isActive;
         return this.isActive && this.video.readyState === this.video.HAVE_ENOUGH_DATA;
     }
 
@@ -319,20 +370,29 @@ class CameraManager {
             this.stream.getTracks().forEach(track => track.stop());
             this.stream = null;
         }
+        
+        if (this.demoAnimationId) {
+            cancelAnimationFrame(this.demoAnimationId);
+            this.demoAnimationId = null;
+        }
+        
         this.isActive = false;
+        this.isDemoMode = false;
         Utils.updateStatus('camera', false);
         console.log('Camera stopped');
     }
 
     pause() {
-        if (this.video) {
+        if (this.video && !this.isDemoMode) {
             this.video.pause();
         }
     }
 
     resume() {
-        if (this.video && this.isActive) {
-            this.video.play();
+        if (this.video && this.isActive && !this.isDemoMode) {
+            this.video.play().catch(err => {
+                console.warn('Resume failed:', err);
+            });
         }
     }
 }
