@@ -35,83 +35,66 @@ class SkeletonMapper {
         }
     }
 
-    update(poseData) {
-        if (!poseData?.landmarks) return;
+   update(poseData) {
+    if (!poseData?.landmarks) return;
 
-        const jacket = this.jacket || modelLoader.getModel();
-        if (!jacket) return;
+    const jacket = this.jacket || modelLoader.getModel();
+    if (!jacket) return;
 
-        const L = CONFIG.SKELETON.LANDMARKS;
-        const lm = poseData.landmarks;
+    const camera = sceneManager.getCamera();
+    if (!camera) return;
 
-        const LS = lm[L.LEFT_SHOULDER];
-        const RS = lm[L.RIGHT_SHOULDER];
-        const LH = lm[L.LEFT_HIP];
-        const RH = lm[L.RIGHT_HIP];
+    const L = CONFIG.SKELETON.LANDMARKS;
+    const lm = poseData.landmarks;
 
-        if (!LS || !RS || !LH || !RH) return;
+    const LS = lm[L.LEFT_SHOULDER];
+    const RS = lm[L.RIGHT_SHOULDER];
 
-        // ---- position (torso center, adjusted up for face visibility) ----
-        const center = {
-            x: (LS.x + RS.x + LH.x + RH.x) / 4,
-            y: (LS.y + RS.y) / 2,          // ✅ FIXED: Use shoulder midpoint (higher)
-            z: (LS.z + RS.z + LH.z + RH.z) / 4
-        };
+    if (!LS || !RS) return;
 
-        const aspect = this.width / this.height;
-        const x = (center.x - 0.5) * aspect * 2;
-        const y = -(center.y - 0.45) * 2;  // ✅ FIXED: Offset to show face
+    // ===== SCREEN POSITION =====
+    const cx = (LS.x + RS.x) / 2;
+    const cy = (LS.y + RS.y) / 2;
 
-        const shoulderDist = Math.sqrt(
-            (LS.x - RS.x) ** 2 +
-            (LS.y - RS.y) ** 2 +
-            (LS.z - RS.z) ** 2
-        );
+    // normalized screen -> clip space
+    const nx = (cx - 0.5) * 2;
+    const ny = -(cy - 0.5) * 2;
 
-        if (shoulderDist < 0.001) return;
+    // project onto camera plane
+    const distance = 2.2; // fixed AR plane distance
+    const fov = camera.fov * Math.PI / 180;
 
-        // ✅ FIXED: Adjust Z distance for proper viewing (not too close, not too far)
-        const z = -2.0 / shoulderDist;
+    const viewHeight = 2 * Math.tan(fov / 2) * distance;
+    const viewWidth = viewHeight * (this.width / this.height);
 
-        // ---- rotation ----
-        const dx = RS.x - LS.x;
-        const dy = RS.y - LS.y;
-        const dz = RS.z - LS.z;
+    const x = nx * viewWidth / 2;
+    const y = ny * viewHeight / 2 - viewHeight * 0.08; // chest offset
+    const z = -distance; // FIXED DEPTH (critical)
 
-        const yaw = Math.atan2(dz, dx);
-        const roll = Math.atan2(dy, dx);
+    // ===== SCALE FROM SHOULDER WIDTH =====
+    const dx = RS.x - LS.x;
+    const dy = RS.y - LS.y;
+    const shoulderWidth = Math.sqrt(dx * dx + dy * dy);
 
-        // ---- scale (smaller range for proper fit) ----
-        const rawScale = 1.5 / shoulderDist;
-        const scale = Utils.clamp(rawScale, 1.2, 2.5);  // ✅ FIXED: Much smaller range
+    // convert screen % → world units
+    const worldShoulderWidth = shoulderWidth * viewWidth;
+    const scale = Utils.clamp(worldShoulderWidth * 2.4, 0.9, 2.2);
 
-        // ---- smoothing ----
-        this.smooth.pos = this.lerp3(this.smooth.pos, { x, y, z }, 0.25);
-        this.smooth.rot = this.lerp3(
-            this.smooth.rot,
-            { x: 0, y: Math.PI - yaw, z: -roll },
-            0.3
-        );
-        this.smooth.scale = Utils.ema(scale, this.smooth.scale, 0.25);
+    // ===== ROTATION (only tilt) =====
+    const tilt = Math.atan2(dy, dx);
 
-        jacket.position.set(
-            this.smooth.pos.x,
-            this.smooth.pos.y,
-            this.smooth.pos.z
-        );
+    // ===== SMOOTHING =====
+    this.smooth.pos = this.lerp3(this.smooth.pos, { x, y, z }, 0.25);
+    this.smooth.rot = this.lerp3(this.smooth.rot, { x: 0, y: Math.PI, z: -tilt * 0.5 }, 0.3);
+    this.smooth.scale = Utils.ema(scale, this.smooth.scale, 0.25);
 
-        jacket.rotation.set(
-            this.smooth.rot.x,
-            this.smooth.rot.y,
-            this.smooth.rot.z
-        );
+    // ===== APPLY =====
+    jacket.position.set(this.smooth.pos.x, this.smooth.pos.y, this.smooth.pos.z);
+    jacket.rotation.set(this.smooth.rot.x, this.smooth.rot.y, this.smooth.rot.z);
+    jacket.scale.setScalar(this.smooth.scale);
 
-        jacket.scale.setScalar(this.smooth.scale);
-        
-        // ✅ Force visibility
-        jacket.visible = true;
-    }
-    
+    jacket.visible = true;
+}
     // Helper method for 3D lerp
     lerp3(start, end, t) {
         return {
