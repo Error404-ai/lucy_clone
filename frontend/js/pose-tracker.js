@@ -1,339 +1,119 @@
-// MediaPipe Pose tracking module for Lucy Virtual Try-On
-// OPTIMIZED VERSION - Frame throttling for performance
-
 class PoseTracker {
-    constructor() {
-        this.pose = null;
-        this.camera = null;
-        this.isInitialized = false;
-        this.landmarks = null;
-        this.worldLandmarks = null;
-        this.smoothedLandmarks = null;
-        this.callbacks = [];
-        
-        // Performance tracking
-        this.lastFrameTime = performance.now();
-        this.frameCount = 0;
-        this.fps = 0;
-        
-        // ✅ Frame throttling for performance
-        this.lastProcessTime = 0;
-        this.processInterval = 1000 / 30; // Process at 30 FPS max
-        this.isProcessing = false;
-    }
+constructor() {
+this.pose = null;
+this.landmarks = null;
+this.smoothedLandmarks = null;
+this.callbacks = [];
+this.isInitialized = false;
 
-    /**
-     * Initialize MediaPipe Pose
-     */
-    async init() {
-        try {
-            console.log('Initializing MediaPipe Pose...');
-            Utils.updateLoadingText('Loading AI pose tracking...');
 
-            // Use window.Pose to access MediaPipe Pose class
-            const Pose = window.Pose;
-            if (!Pose) {
-                throw new Error('MediaPipe Pose not loaded');
-            }
+    this.lastProcessTime = 0;
+    this.processInterval = 1000 / 30;
+    this.isProcessing = false;
+}
 
-            // Initialize Pose
-            this.pose = new Pose({
-                locateFile: (file) => {
-                    return `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5.1675469404/${file}`;
-                }
-            });
+async init() {
+    const Pose = window.Pose;
 
-            // ✅ Optimize Pose options for performance
-            this.pose.setOptions({
-                modelComplexity: 0, // ✅ Use Lite model (was 1)
-                smoothLandmarks: true,
-                enableSegmentation: false, // ✅ Disable segmentation
-                smoothSegmentation: false,
-                minDetectionConfidence: 0.5,
-                minTrackingConfidence: 0.5
-            });
+    this.pose = new Pose({
+        locateFile: file =>
+            `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+    });
 
-            // Set result callback
-            this.pose.onResults((results) => this.onResults(results));
+    this.pose.setOptions({
+        modelComplexity: 0,
+        smoothLandmarks: true,
+        enableSegmentation: false,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+    });
 
-            this.isInitialized = true;
-            Utils.updateStatus('tracking', true);
-            console.log('MediaPipe Pose initialized (optimized)');
+    this.pose.onResults(r => this.onResults(r));
+    this.isInitialized = true;
+    console.log("PoseTracker ready");
+}
 
-        } catch (error) {
-            console.error('Pose initialization failed:', error);
-            Utils.updateStatus('tracking', false);
-            throw new Error(`Pose tracking initialization failed: ${error.message}`);
-        }
-    }
-
-    /**
-     * Start pose tracking with frame throttling
-     */
-    async start() {
-        if (!this.isInitialized) {
-            throw new Error('Pose tracker not initialized');
-        }
-
-        try {
-            // Get video element
-            const video = document.getElementById('camera-video');
-            
-            // ✅ Throttled frame loop - only process every 33ms (30 FPS)
-            const sendFrame = async () => {
-                const now = performance.now();
-                const elapsed = now - this.lastProcessTime;
-                
-                // Skip frame if not enough time has passed or still processing
-                if (elapsed < this.processInterval || this.isProcessing) {
-                    requestAnimationFrame(sendFrame);
-                    return;
-                }
-                
-                if (this.pose && video.readyState >= 2) {
-                    this.isProcessing = true;
-                    this.lastProcessTime = now;
-                    
-                    try {
-                        await this.pose.send({ image: video });
-                    } catch (error) {
-                        console.error('Pose processing error:', error);
-                    } finally {
-                        this.isProcessing = false;
-                    }
-                }
-                
-                requestAnimationFrame(sendFrame);
-            };
-            
-            // Start the frame loop
-            requestAnimationFrame(sendFrame);
-            console.log('Pose tracking started (throttled to 30 FPS)');
-
-        } catch (error) {
-            console.error('Error starting pose tracking:', error);
-            Utils.showError('Could not start pose tracking');
-            throw error;
-        }
-    }
-
-    /**
-     * Handle pose detection results
-     */
-    onResults(results) {
-        // Update FPS
-        this.updateFPS();
-
-        if (!results.poseLandmarks) {
-            this.landmarks = null;
-            this.worldLandmarks = null;
+async start(video) {
+    const loop = async () => {
+        const now = performance.now();
+        if (now - this.lastProcessTime < this.processInterval || this.isProcessing) {
+            requestAnimationFrame(loop);
             return;
         }
 
-        // Store raw landmarks
-        this.landmarks = results.poseLandmarks;
-        this.worldLandmarks = results.poseWorldLandmarks;
-
-        // Apply smoothing
-        if (this.smoothedLandmarks && CONFIG.SKELETON.SMOOTHING_FACTOR > 0) {
-            this.smoothedLandmarks = this.smoothLandmarks(
-                results.poseLandmarks,
-                this.smoothedLandmarks,
-                CONFIG.SKELETON.SMOOTHING_FACTOR
-            );
-        } else {
-            this.smoothedLandmarks = results.poseLandmarks;
+        if (video.readyState >= 2) {
+            this.isProcessing = true;
+            this.lastProcessTime = now;
+            await this.pose.send({ image: video });
+            this.isProcessing = false;
         }
 
-        // Debug visualization (expensive, skip if not needed)
-        if (CONFIG.DEBUG.SHOW_POSE_LANDMARKS) {
-            this.drawLandmarks(results);
-        }
-
-        // Trigger callbacks
-        this.callbacks.forEach(callback => {
-            callback({
-                landmarks: this.smoothedLandmarks,
-                worldLandmarks: this.worldLandmarks,
-                rawLandmarks: this.landmarks
-            });
-        });
-    }
-
-    /**
-     * Smooth landmarks using exponential moving average
-     */
-    smoothLandmarks(current, previous, alpha) {
-        return current.map((landmark, i) => {
-            const prev = previous[i];
-            return {
-                x: Utils.ema(landmark.x, prev.x, alpha),
-                y: Utils.ema(landmark.y, prev.y, alpha),
-                z: Utils.ema(landmark.z, prev.z, alpha),
-                visibility: landmark.visibility
-            };
-        });
-    }
-
-    /**
-     * Get specific landmark by name
-     */
-    getLandmark(name) {
-        if (!this.smoothedLandmarks) return null;
-        
-        const index = CONFIG.SKELETON.LANDMARKS[name];
-        if (index === undefined) return null;
-        
-        return this.smoothedLandmarks[index];
-    }
-
-    /**
-     * Get multiple landmarks
-     */
-    getLandmarks(names) {
-        return names.map(name => this.getLandmark(name));
-    }
-
-    /**
-     * Check if pose is detected
-     */
-    isPoseDetected() {
-        return this.smoothedLandmarks !== null;
-    }
-
-    /**
-     * Calculate shoulder width
-     */
-    getShoulderWidth() {
-        const leftShoulder = this.getLandmark('LEFT_SHOULDER');
-        const rightShoulder = this.getLandmark('RIGHT_SHOULDER');
-        
-        if (!leftShoulder || !rightShoulder) return null;
-        
-        return Utils.distance2D(
-            leftShoulder.x, leftShoulder.y,
-            rightShoulder.x, rightShoulder.y
-        );
-    }
-
-    /**
-     * Calculate torso center
-     */
-    getTorsoCenter() {
-        const leftShoulder = this.getLandmark('LEFT_SHOULDER');
-        const rightShoulder = this.getLandmark('RIGHT_SHOULDER');
-        const leftHip = this.getLandmark('LEFT_HIP');
-        const rightHip = this.getLandmark('RIGHT_HIP');
-        
-        if (!leftShoulder || !rightShoulder || !leftHip || !rightHip) return null;
-        
-        return {
-            x: (leftShoulder.x + rightShoulder.x + leftHip.x + rightHip.x) / 4,
-            y: (leftShoulder.y + rightShoulder.y + leftHip.y + rightHip.y) / 4,
-            z: (leftShoulder.z + rightShoulder.z + leftHip.z + rightHip.z) / 4
-        };
-    }
-
-    /**
-     * Calculate body rotation (yaw)
-     */
-    getBodyRotation() {
-        const leftShoulder = this.getLandmark('LEFT_SHOULDER');
-        const rightShoulder = this.getLandmark('RIGHT_SHOULDER');
-        
-        if (!leftShoulder || !rightShoulder) return 0;
-        
-        // Calculate angle based on shoulder positions
-        const dx = rightShoulder.x - leftShoulder.x;
-        const dy = rightShoulder.y - leftShoulder.y;
-        return Math.atan2(dy, dx);
-    }
-
-    /**
-     * Register callback for pose updates
-     */
-    onPoseUpdate(callback) {
-        this.callbacks.push(callback);
-    }
-
-    /**
-     * Update FPS counter
-     */
-    updateFPS() {
-        this.frameCount++;
-        const now = performance.now();
-        const elapsed = now - this.lastFrameTime;
-        
-        if (elapsed >= 1000) {
-            this.fps = Math.round((this.frameCount * 1000) / elapsed);
-            // Don't update UI FPS here - let renderer handle it
-            this.frameCount = 0;
-            this.lastFrameTime = now;
-        }
-    }
-
-    /**
-     * Draw landmarks for debugging (EXPENSIVE - use sparingly)
-     */
-    drawLandmarks(results) {
-        const canvas = document.getElementById('pose-canvas');
-        if (!canvas) return;
-        
-        const canvasCtx = canvas.getContext('2d');
-        
-        canvas.width = CONFIG.CAMERA.WIDTH;
-        canvas.height = CONFIG.CAMERA.HEIGHT;
-        
-        canvasCtx.save();
-        canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        if (results.poseLandmarks) {
-            drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {
-                color: '#00FF00',
-                lineWidth: 4
-            });
-            drawLandmarks(canvasCtx, results.poseLandmarks, {
-                color: '#FF0000',
-                lineWidth: 2,
-                radius: 6
-            });
-        }
-        
-        canvasCtx.restore();
-    }
-
-    /**
-     * Stop pose tracking
-     */
-    stop() {
-        if (this.camera) {
-            this.camera.stop();
-            this.camera = null;
-        }
-        
-        this.landmarks = null;
-        this.worldLandmarks = null;
-        this.smoothedLandmarks = null;
-        this.isProcessing = false;
-        Utils.updateStatus('tracking', false);
-        console.log('Pose tracking stopped');
-    }
-
-    /**
-     * Get current FPS
-     */
-    getFPS() {
-        return this.fps;
-    }
-    
-    /**
-     * Set process interval (FPS cap)
-     */
-    setProcessInterval(fps) {
-        this.processInterval = 1000 / fps;
-        console.log(`Pose processing capped at ${fps} FPS`);
-    }
+        requestAnimationFrame(loop);
+    };
+    loop();
 }
 
-// Create global instance
+onResults(results) {
+    if (!results.poseLandmarks) return;
+
+    this.landmarks = results.poseLandmarks;
+
+    if (!this.smoothedLandmarks) {
+        this.smoothedLandmarks = this.landmarks;
+    } else {
+        this.smoothedLandmarks = this.landmarks.map((lm, i) => ({
+            x: Utils.ema(lm.x, this.smoothedLandmarks[i].x, 0.6),
+            y: Utils.ema(lm.y, this.smoothedLandmarks[i].y, 0.6),
+            z: Utils.ema(lm.z, this.smoothedLandmarks[i].z, 0.6),
+            visibility: lm.visibility
+        }));
+    }
+
+    this.callbacks.forEach(cb => cb({ landmarks: this.smoothedLandmarks }));
+}
+
+// ---------- coordinate helpers ----------
+
+toScreenSpace(lm) {
+    return {
+        x: lm.x * CONFIG.CAMERA.WIDTH,
+        y: lm.y * CONFIG.CAMERA.HEIGHT,
+        z: lm.z * CONFIG.CAMERA.WIDTH
+    };
+}
+
+getLandmark(name) {
+    if (!this.smoothedLandmarks) return null;
+    const i = CONFIG.SKELETON.LANDMARKS[name];
+    return this.toScreenSpace(this.smoothedLandmarks[i]);
+}
+
+getShoulderWidth() {
+    const l = this.getLandmark('LEFT_SHOULDER');
+    const r = this.getLandmark('RIGHT_SHOULDER');
+    if (!l || !r) return null;
+
+    const dx = l.x - r.x;
+    const dy = l.y - r.y;
+    const dz = l.z - r.z;
+    return Math.sqrt(dx*dx + dy*dy + dz*dz);
+}
+
+getBodyRotation() {
+    const l = this.getLandmark('LEFT_SHOULDER');
+    const r = this.getLandmark('RIGHT_SHOULDER');
+    if (!l || !r) return 0;
+
+    const dz = r.z - l.z;
+    const dx = r.x - l.x;
+    return Math.atan2(dz, dx);
+}
+
+onPoseUpdate(cb) {
+    this.callbacks.push(cb);
+}
+
+
+}
+
 const poseTracker = new PoseTracker();
