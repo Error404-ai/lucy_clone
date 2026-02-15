@@ -96,21 +96,22 @@ class CompositeRenderer {
     }
 
     // ⭐⭐⭐ CORE FUNCTION — SCREEN → WORLD CONVERSION ⭐⭐⭐
-    getWorldPositionFromScreen(x, y, depth = 2.2) {
-        const camera = sceneManager.getCamera();
-        if (!camera) return new THREE.Vector3(0, 0, -depth);
+    getWorldPositionFromScreen(nx, ny, depth = 2.2) {
 
-        const ndc = new THREE.Vector3(
-            (x - 0.5) * 2,
-            -(y - 0.5) * 2,
-            0.5
-        );
+    const camera = sceneManager.getCamera();
 
-        ndc.unproject(camera);
+    // convert to NDC (-1 to +1)
+    const x = (nx - 0.5) * 2;
+    const y = -(ny - 0.5) * 2;
 
-        const direction = ndc.sub(camera.position).normalize();
-        return camera.position.clone().add(direction.multiplyScalar(depth));
-    }
+    const vector = new THREE.Vector3(x, y, 0.5);
+    vector.unproject(camera);
+
+    const dir = vector.sub(camera.position).normalize();
+
+    const distance = depth;
+    return camera.position.clone().add(dir.multiplyScalar(distance));
+}
 
     start() {
         if (this.isRunning) return;
