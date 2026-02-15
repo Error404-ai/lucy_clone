@@ -45,7 +45,7 @@ const CONFIG = {
         BASE_SCALE: 1.6,
         MIN_SCALE: 1.2,
         MAX_SCALE: 2.5,
-        DEPTH_OFFSET: -2.2,
+        DEPTH_OFFSET: 2.2,
 
         LANDMARKS: {
             LEFT_SHOULDER: 11,
