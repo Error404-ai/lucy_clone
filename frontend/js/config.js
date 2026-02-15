@@ -39,8 +39,8 @@ const CONFIG = {
 
     JACKET: {
         MODEL_PATH: 'assets/models/Jacket.glb',
-        SCALE: 1.2,                  // ✅ FIXED: Smaller scale (was 1.8)
-        POSITION: { x: 0, y: 0.2, z: -5 },  // ✅ FIXED: Further back (was z: -1.5)
+        SCALE: 0.3,                  // ✅ FIXED: Proper scale for this model
+        POSITION: { x: 0, y: 0, z: -6 },  // ✅ FIXED: Proper distance
         ROTATION: { x: 0, y: Math.PI, z: 0 }
     },
 
@@ -61,7 +61,7 @@ const CONFIG = {
             ARMS: 1.0
         },
         BASE_SCALE: 2.5,             // ✅ FIXED: Better scale (was 3.5)
-        DEPTH_OFFSET: -5,            // ✅ FIXED: Matches jacket depth (was -1.5)
+        DEPTH_OFFSET: -6,            // ✅ FIXED: Matches jacket depth (was -1.5)
         VERTICAL_OFFSET: 0.0,
         HORIZONTAL_OFFSET: 0.0,
         POSITION_SCALE_X: 3.0,       // ✅ Reduced positioning scale

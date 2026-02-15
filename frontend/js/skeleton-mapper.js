@@ -1,199 +1,161 @@
-// Skeleton Mapper - FIXED with CENTER fallback when no pose detected
+// skeleton-mapper.js - Maps MediaPipe pose landmarks to 3D jacket model
 
 class SkeletonMapper {
     constructor() {
-        this.width = 0;
-        this.height = 0;
-        this.initialized = false;
-
-        // Jacket reference
-        this.jacket = null;
-
-        // Smooth values
-        this.smooth = {
-            pos: { x: 0, y: 0, z: -2 },
-            rot: { x: 0, y: Math.PI, z: 0 },
-            scale: 1.8
-        };
-        
-        // Track if we have valid pose
+        this.model = null;
         this.hasValidPose = false;
-        this.noPoseFrames = 0;
-    }
-
-    init(w, h) {
-        this.width = w;
-        this.height = h;
-        this.initialized = true;
-        console.log('✅ SkeletonMapper initialized:', w, 'x', h);
-    }
-
-    setJacket(jacket) {
-        this.jacket = jacket;
-        console.log('🔗 Jacket linked to SkeletonMapper');
+        this.framesWithoutPose = 0;
+        this.smoothedPositions = new Map();
+        this.lastLogTime = 0;
         
-        // ✅ CRITICAL: Show jacket in CENTER immediately
-        if (jacket && !this.hasValidPose) {
-            this.showInCenter();
-        }
-    }
-
-    forceShowJacket() {
-        if (this.jacket) {
-            this.jacket.visible = true;
-            console.log('👁 Jacket forced visible');
-            
-            // Show in center if no pose
-            if (!this.hasValidPose) {
-                this.showInCenter();
-            }
-        }
+        console.log('🦴 SkeletonMapper initialized');
     }
 
     /**
-     * Show jacket in center of screen (fallback when no pose detected)
+     * Set the jacket model
+     */
+    setJacket(model) {
+        this.model = model;
+        console.log('🔗 Jacket linked to SkeletonMapper');
+    }
+
+    /**
+     * Show jacket in center of view when no pose is detected
      */
     showInCenter() {
-        if (!this.jacket) return;
+        if (!this.model) return;
+
+        // Use config values for positioning
+        this.model.position.set(
+            CONFIG.JACKET.POSITION.x,
+            CONFIG.JACKET.POSITION.y,
+            CONFIG.JACKET.POSITION.z
+        );
         
-        console.log('📍 Showing jacket in CENTER (no pose detected)');
+        this.model.scale.setScalar(CONFIG.JACKET.SCALE);
+        this.model.visible = true;
         
-        // Center position
-        this.jacket.position.set(0, 0, -2);
-        
-        // Forward rotation
-        this.jacket.rotation.set(0, Math.PI, 0);
-        
-        // Medium scale
-        this.jacket.scale.setScalar(1.8);
-        
-        // Make visible
-        this.jacket.visible = true;
-        
-        console.log('✅ Jacket positioned at center');
+        // Only log occasionally to avoid spam (every 5 seconds)
+        const now = Date.now();
+        if (!this.lastLogTime || now - this.lastLogTime > 5000) {
+            console.log('📍 Jacket in center (no pose) - Position:', 
+                `[${CONFIG.JACKET.POSITION.x}, ${CONFIG.JACKET.POSITION.y}, ${CONFIG.JACKET.POSITION.z}]`,
+                `Scale: ${CONFIG.JACKET.SCALE}`);
+            this.lastLogTime = now;
+        }
     }
 
-    update(poseData) {
-        const jacket = this.jacket || modelLoader.getModel();
-        if (!jacket) return;
-
-        // Check if we have valid pose data
-        if (!poseData?.landmarks) {
-            this.noPoseFrames++;
-            
-            // After 10 frames of no pose, show in center
-            if (this.noPoseFrames > 10 && !this.hasValidPose) {
-                this.showInCenter();
-            }
-            return;
+    /**
+     * Force jacket to be visible
+     */
+    forceVisible() {
+        if (this.model) {
+            this.model.visible = true;
         }
+    }
 
-        const L = CONFIG.SKELETON.LANDMARKS;
-        const lm = poseData.landmarks;
+    /**
+     * Update jacket position and scale based on pose landmarks
+     */
+    update(poseLandmarks) {
+        if (!this.model) return;
 
-        const LS = lm[L.LEFT_SHOULDER];
-        const RS = lm[L.RIGHT_SHOULDER];
-        const LH = lm[L.LEFT_HIP];
-        const RH = lm[L.RIGHT_HIP];
-
-        // Check if we have minimum required landmarks
-        if (!LS || !RS || !LH || !RH) {
-            this.noPoseFrames++;
-            if (this.noPoseFrames > 10 && !this.hasValidPose) {
-                this.showInCenter();
-            }
-            return;
-        }
-
-        // ✅ We have valid pose!
-        this.hasValidPose = true;
-        this.noPoseFrames = 0;
-
-        // ---- Position (torso center, adjusted up for face visibility) ----
-        const center = {
-            x: (LS.x + RS.x + LH.x + RH.x) / 4,
-            y: (LS.y + RS.y) / 2,          // Use shoulder midpoint (higher)
-            z: (LS.z + RS.z + LH.z + RH.z) / 4
-        };
-
-        const aspect = this.width / this.height;
-        const x = (center.x - 0.5) * aspect * 2;
-        const y = -(center.y - 0.45) * 2;  // Offset to show face
-
-        const shoulderDist = Math.sqrt(
-            (LS.x - RS.x) ** 2 +
-            (LS.y - RS.y) ** 2 +
-            (LS.z - RS.z) ** 2
-        );
-
-        if (shoulderDist < 0.001) {
+        // If no pose, show in center
+        if (!poseLandmarks || poseLandmarks.length === 0) {
+            this.hasValidPose = false;
+            this.framesWithoutPose++;
             this.showInCenter();
             return;
         }
 
-        // Adjust Z distance for proper viewing
-        const z = -2.0 / shoulderDist;
+        // We have a valid pose!
+        this.hasValidPose = true;
+        this.framesWithoutPose = 0;
 
-        // ---- Rotation ----
-        const dx = RS.x - LS.x;
-        const dy = RS.y - LS.y;
-        const dz = RS.z - LS.z;
+        // Get key shoulder landmarks
+        const leftShoulder = poseLandmarks[11];
+        const rightShoulder = poseLandmarks[12];
 
-        const yaw = Math.atan2(dz, dx);
-        const roll = Math.atan2(dy, dx);
+        if (!leftShoulder || !rightShoulder) {
+            this.showInCenter();
+            return;
+        }
 
-        // ---- Scale (smaller range for proper fit) ----
-        const rawScale = 1.5 / shoulderDist;
-        const scale = Utils.clamp(rawScale, 1.2, 2.5);
+        // Calculate center position between shoulders
+        const centerX = (leftShoulder.x + rightShoulder.x) / 2;
+        const centerY = (leftShoulder.y + rightShoulder.y) / 2;
+        const centerZ = (leftShoulder.z + rightShoulder.z) / 2;
 
-        // ---- Smoothing ----
-        this.smooth.pos = this.lerp3(this.smooth.pos, { x, y, z }, 0.25);
-        this.smooth.rot = this.lerp3(
-            this.smooth.rot,
-            { x: 0, y: Math.PI - yaw, z: -roll },
-            0.3
-        );
-        this.smooth.scale = Utils.ema(scale, this.smooth.scale, 0.25);
-
-        jacket.position.set(
-            this.smooth.pos.x,
-            this.smooth.pos.y,
-            this.smooth.pos.z
+        // Calculate shoulder width for scaling
+        const shoulderWidth = Math.sqrt(
+            Math.pow(rightShoulder.x - leftShoulder.x, 2) +
+            Math.pow(rightShoulder.y - leftShoulder.y, 2) +
+            Math.pow(rightShoulder.z - leftShoulder.z, 2)
         );
 
-        jacket.rotation.set(
-            this.smooth.rot.x,
-            this.smooth.rot.y,
-            this.smooth.rot.z
-        );
+        // Convert normalized coordinates to 3D space
+        const x = (centerX - 0.5) * 2;  // Convert to [-1, 1]
+        const y = -(centerY - 0.5) * 2; // Invert Y and convert to [-1, 1]
+        const z = CONFIG.SKELETON.DEPTH_OFFSET + (centerZ * -2);
 
-        jacket.scale.setScalar(this.smooth.scale);
+        // Calculate scale based on shoulder width
+        let scale = shoulderWidth * CONFIG.SKELETON.BASE_SCALE;
+        scale = Math.max(CONFIG.SKELETON.MIN_SCALE, Math.min(CONFIG.SKELETON.MAX_SCALE, scale));
+
+        // Apply smoothing if enabled
+        if (CONFIG.SKELETON.SMOOTHING_FACTOR) {
+            const smoothX = this.smoothValue('x', x, CONFIG.SKELETON.SMOOTHING_FACTOR);
+            const smoothY = this.smoothValue('y', y, CONFIG.SKELETON.SMOOTHING_FACTOR);
+            const smoothZ = this.smoothValue('z', z, CONFIG.SKELETON.SMOOTHING_FACTOR);
+            const smoothScale = this.smoothValue('scale', scale, CONFIG.SKELETON.SMOOTHING_FACTOR);
+
+            this.model.position.set(smoothX, smoothY, smoothZ);
+            this.model.scale.setScalar(smoothScale);
+        } else {
+            this.model.position.set(x, y, z);
+            this.model.scale.setScalar(scale);
+        }
+
+        this.model.visible = true;
         
-        // Force visibility
-        jacket.visible = true;
+        // Log occasionally (every 60 frames = ~2 seconds at 30fps)
+        if (this.framesWithoutPose % 60 === 0) {
+            console.log(`✅ Pose tracked - Position: [${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)}], Scale: ${scale.toFixed(2)}`);
+        }
     }
-    
-    // Helper method for 3D lerp
-    lerp3(start, end, t) {
-        return {
-            x: Utils.lerp(start.x, end.x, t),
-            y: Utils.lerp(start.y, end.y, t),
-            z: Utils.lerp(start.z, end.z, t)
-        };
-    }
-    
+
     /**
-     * Get current status
+     * Smooth a value over time using exponential moving average
+     */
+    smoothValue(key, newValue, factor) {
+        const oldValue = this.smoothedPositions.get(key);
+        if (oldValue === undefined) {
+            this.smoothedPositions.set(key, newValue);
+            return newValue;
+        }
+        
+        const smoothed = oldValue + (newValue - oldValue) * factor;
+        this.smoothedPositions.set(key, smoothed);
+        return smoothed;
+    }
+
+    /**
+     * Get current status for debugging
      */
     getStatus() {
         return {
             hasValidPose: this.hasValidPose,
-            noPoseFrames: this.noPoseFrames,
-            position: this.jacket ? this.jacket.position.toArray() : null,
-            visible: this.jacket ? this.jacket.visible : false
+            framesWithoutPose: this.framesWithoutPose,
+            position: this.model ? {
+                x: this.model.position.x,
+                y: this.model.position.y,
+                z: this.model.position.z
+            } : null,
+            scale: this.model ? this.model.scale.x : null,
+            visible: this.model ? this.model.visible : false
         };
     }
 }
 
-// Global instance
+// Initialize global instance
 const skeletonMapper = new SkeletonMapper();
