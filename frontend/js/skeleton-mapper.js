@@ -7,8 +7,14 @@ class SkeletonMapper {
         this.framesWithoutPose = 0;
         this.smoothedPositions = new Map();
         this.lastLogTime = 0;
-        
+    }
+
+    /**
+     * Initialize the skeleton mapper
+     */
+    async init() {
         console.log('🦴 SkeletonMapper initialized');
+        return true;
     }
 
     /**
