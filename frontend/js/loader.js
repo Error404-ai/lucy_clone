@@ -24,16 +24,15 @@ class ModelLoader {
 
                 this.findJacketMeshes(this.jacketModel);
                 if (this.jacketMeshes.length === 0)
-                    return reject('No meshes in model');
+                    return reject('No valid clothing mesh found');
 
-                // IMPORTANT: normalize ONLY ONCE
                 this.normalizeModelSize();
                 this.centerPivotToChest();
 
-                // DO NOT position or scale here
-                this.jacketModel.position.set(0,0,-2);
+                // AR default transform
+                this.jacketModel.position.set(0, 0, -2);
                 this.jacketModel.scale.setScalar(1);
-                this.jacketModel.rotation.set(0,Math.PI,0);
+                this.jacketModel.rotation.set(0, Math.PI, 0);
 
                 this.jacketModel.visible = false;
 
@@ -83,18 +82,44 @@ class ModelLoader {
         console.log('🎯 Pivot moved to chest');
     }
 
-    /* ================= MESH FIND ================= */
+    /* ================= MESH FILTER (THE REAL FIX) ================= */
 
     findJacketMeshes(object) {
         this.jacketMeshes = [];
 
         object.traverse(child => {
-            if (child.isMesh || child.isSkinnedMesh) {
-                if (child.name.toLowerCase().includes('helper')) return;
-                this.jacketMeshes.push(child);
-                child.frustumCulled = false;
+
+            if (!(child.isMesh || child.isSkinnedMesh)) return;
+
+            const vertexCount = child.geometry?.attributes?.position?.count || 0;
+            const name = child.name.toLowerCase();
+
+            // ❌ REMOVE helper geometry
+            const isHelperName =
+                name.includes('cube') ||
+                name.includes('plane') ||
+                name.includes('helper') ||
+                name.includes('mannequin') ||
+                name.includes('body') ||
+                name.includes('collider');
+
+            // ❌ REMOVE tiny meshes (buttons / bounding box)
+            const isTooSmall = vertexCount < 1500;
+
+            if (isHelperName || isTooSmall) {
+                console.log(🚫 Ignored mesh: ${child.name} (verts: ${vertexCount}));
+                child.visible = false;
+                return;
             }
+
+            // ✅ REAL CLOTHING
+            console.log(🧥 Clothing mesh accepted: ${child.name} (verts: ${vertexCount}));
+
+            this.jacketMeshes.push(child);
+            child.frustumCulled = false;
         });
+
+        console.log(🎯 Final clothing mesh count: ${this.jacketMeshes.length});
     }
 
     /* ================= GETTERS ================= */
