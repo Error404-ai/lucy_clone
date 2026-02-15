@@ -1,5 +1,3 @@
-// Composite Renderer - CRITICAL FIX - Proper video + jacket layering
-
 class CompositeRenderer {
     constructor() {
         this.canvas = document.getElementById('main-canvas');
@@ -7,7 +5,7 @@ class CompositeRenderer {
         this.videoPlane = null;
         this.isRunning = false;
         this.animationId = null;
-        
+
         this.frameCount = 0;
         this.lastFpsUpdate = performance.now();
         this.lastRenderTime = performance.now();
@@ -19,24 +17,23 @@ class CompositeRenderer {
     init(width, height) {
         try {
             console.log('🎬 Initializing Renderer...');
-            
+
             this.width = width;
             this.height = height;
-            
+
             const scale = CONFIG.PERFORMANCE.RENDER_SCALE;
             const displayWidth = this.canvas.clientWidth || window.innerWidth;
             const displayHeight = this.canvas.clientHeight || window.innerHeight;
+
             this.canvas.width = displayWidth * scale;
             this.canvas.height = displayHeight * scale;
-            
-            console.log(`Canvas: ${this.canvas.width}x${this.canvas.height} (scale: ${scale})`);
-            
+
             this.setupVideoBackground();
-            
+
             window.addEventListener('resize', Utils.debounce(() => this.onResize(), 250));
-            
+
             console.log('✅ Renderer initialized');
-            
+
         } catch (error) {
             console.error('❌ Renderer init failed:', error);
             throw error;
@@ -62,60 +59,64 @@ class CompositeRenderer {
 
     createVideoTexture(video) {
         console.log('🎥 Creating video texture...');
-        
-        // ✅ Create video texture
+
         this.videoTexture = new THREE.VideoTexture(video);
         this.videoTexture.minFilter = THREE.LinearFilter;
         this.videoTexture.magFilter = THREE.LinearFilter;
-        this.videoTexture.format = THREE.RGBFormat;
+
+        // ⭐ FIXED (prevents red/black screen on some GPUs)
+        this.videoTexture.format = THREE.RGBAFormat;
         this.videoTexture.colorSpace = THREE.SRGBColorSpace;
 
-        // ✅ CRITICAL: Calculate proper plane size to fill viewport
         const camera = sceneManager.getCamera();
-        const distance = Math.abs(camera.position.z - (-10)); // Distance to background plane
+
+        const distance = Math.abs(camera.position.z - (-10));
         const vFOV = THREE.MathUtils.degToRad(camera.fov);
         const planeHeight = 2 * Math.tan(vFOV / 2) * distance;
         const planeWidth = planeHeight * camera.aspect;
-        
-        console.log(`📐 Video plane: ${planeWidth.toFixed(2)} x ${planeHeight.toFixed(2)} at z=-10`);
-        
+
         const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
-        
-        // ✅ CRITICAL: Use MeshBasicMaterial (unlit, no lighting effects)
+
         const material = new THREE.MeshBasicMaterial({
             map: this.videoTexture,
             side: THREE.FrontSide,
-            depthWrite: false, // ✅ Don't write to depth buffer
-            depthTest: false,  // ✅ Always render behind everything
+            depthWrite: false,
+            depthTest: false,
             toneMapped: false
         });
 
         this.videoPlane = new THREE.Mesh(geometry, material);
-        
-        // ✅ CRITICAL: Position FAR behind jacket
         this.videoPlane.position.set(0, 0, -10);
-        
-        // ✅ CRITICAL: Render order - video FIRST (lowest number)
         this.videoPlane.renderOrder = -1000;
-        
-        // ✅ Make visible
         this.videoPlane.visible = true;
-        
-        // ✅ Add to scene FIRST (before jacket)
+
         sceneManager.add(this.videoPlane);
-        
-        console.log('✅ Video background created and added to scene');
-        console.log('   Position:', this.videoPlane.position.toArray());
-        console.log('   Render order:', this.videoPlane.renderOrder);
-        console.log('   Visible:', this.videoPlane.visible);
+
+        console.log('✅ Video background ready');
+    }
+
+    // ⭐⭐⭐ CORE FUNCTION — SCREEN → WORLD CONVERSION ⭐⭐⭐
+    getWorldPositionFromScreen(x, y, depth = 2.2) {
+        const camera = sceneManager.getCamera();
+        if (!camera) return new THREE.Vector3(0, 0, -depth);
+
+        const ndc = new THREE.Vector3(
+            (x - 0.5) * 2,
+            -(y - 0.5) * 2,
+            0.5
+        );
+
+        ndc.unproject(camera);
+
+        const direction = ndc.sub(camera.position).normalize();
+        return camera.position.clone().add(direction.multiplyScalar(depth));
     }
 
     start() {
         if (this.isRunning) return;
-        
+
         this.isRunning = true;
         this.lastRenderTime = performance.now();
-        console.log('▶️ Starting render loop...');
         this.render();
     }
 
@@ -125,7 +126,6 @@ class CompositeRenderer {
             cancelAnimationFrame(this.animationId);
             this.animationId = null;
         }
-        console.log('⏹️ Render loop stopped');
     }
 
     render() {
@@ -134,26 +134,19 @@ class CompositeRenderer {
         this.animationId = requestAnimationFrame(() => this.render());
 
         try {
-            // FPS limiting
             const now = performance.now();
             const delta = now - this.lastRenderTime;
             const targetDelta = 1000 / CONFIG.PERFORMANCE.TARGET_FPS;
 
-            if (delta < targetDelta - 1) {
-                return;
-            }
-
+            if (delta < targetDelta - 1) return;
             this.lastRenderTime = now;
 
-            // ✅ Update video texture EVERY frame
-            if (this.videoTexture && cameraManager.isReady()) {
+            // ⭐ FIXED video refresh check
+            if (this.videoTexture && cameraManager.video?.readyState >= 2) {
                 this.videoTexture.needsUpdate = true;
             }
 
-            // ✅ Render scene (video plane + jacket)
             sceneManager.render();
-
-            // Update FPS
             this.updateFPS();
 
         } catch (error) {
@@ -163,13 +156,14 @@ class CompositeRenderer {
 
     captureFrame() {
         if (!this.canvas) return null;
-        
+
         try {
-            if (this.videoTexture && cameraManager.isReady()) {
+            if (this.videoTexture && cameraManager.video?.readyState >= 2) {
                 this.videoTexture.needsUpdate = true;
             }
             sceneManager.render();
             return this.canvas.toDataURL('image/png', 0.95);
+
         } catch (error) {
             console.error('Error capturing frame:', error);
             return null;
@@ -180,21 +174,21 @@ class CompositeRenderer {
         this.frameCount++;
         const now = performance.now();
         const elapsed = now - this.lastFpsUpdate;
-        
+
         if (elapsed >= 1000) {
             const instantFps = Math.round((this.frameCount * 1000) / elapsed);
-            
+
             this.fpsHistory.push(instantFps);
             if (this.fpsHistory.length > this.fpsHistorySize) {
                 this.fpsHistory.shift();
             }
-            
+
             this.fps = Math.round(
                 this.fpsHistory.reduce((a, b) => a + b, 0) / this.fpsHistory.length
             );
-            
+
             Utils.updateFPS(this.fps);
-            
+
             this.frameCount = 0;
             this.lastFpsUpdate = now;
         }
@@ -204,33 +198,17 @@ class CompositeRenderer {
         const displayWidth = this.canvas.clientWidth || window.innerWidth;
         const displayHeight = this.canvas.clientHeight || window.innerHeight;
         const scale = CONFIG.PERFORMANCE.RENDER_SCALE;
-        
+
         this.canvas.width = displayWidth * scale;
         this.canvas.height = displayHeight * scale;
-        
+
         const renderer = sceneManager.getRenderer();
-        if (renderer) {
-            renderer.setSize(displayWidth, displayHeight);
-        }
-        
+        if (renderer) renderer.setSize(displayWidth, displayHeight);
+
         const camera = sceneManager.getCamera();
         if (camera) {
             camera.aspect = displayWidth / displayHeight;
             camera.updateProjectionMatrix();
-            
-            // ✅ Resize video plane to match new aspect ratio
-            if (this.videoPlane) {
-                const distance = Math.abs(camera.position.z - (-10));
-                const vFOV = THREE.MathUtils.degToRad(camera.fov);
-                const planeHeight = 2 * Math.tan(vFOV / 2) * distance;
-                const planeWidth = planeHeight * camera.aspect;
-                
-                this.videoPlane.scale.set(
-                    planeWidth / this.videoPlane.geometry.parameters.width,
-                    planeHeight / this.videoPlane.geometry.parameters.height,
-                    1
-                );
-            }
         }
     }
 
@@ -240,20 +218,14 @@ class CompositeRenderer {
 
     dispose() {
         this.stop();
-        
-        if (this.videoTexture) {
-            this.videoTexture.dispose();
-            this.videoTexture = null;
-        }
-        
+
+        if (this.videoTexture) this.videoTexture.dispose();
+
         if (this.videoPlane) {
             this.videoPlane.geometry.dispose();
             this.videoPlane.material.dispose();
             sceneManager.remove(this.videoPlane);
-            this.videoPlane = null;
         }
-        
-        console.log('Renderer disposed');
     }
 }
 
