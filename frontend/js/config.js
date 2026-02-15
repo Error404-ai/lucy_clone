@@ -37,10 +37,10 @@ const CONFIG = {
         DIRECTIONAL_LIGHT_INTENSITY: 0.8
     },
 
-  JACKET: {
+JACKET: {
     MODEL_PATH: 'assets/models/Jacket.glb',
-    SCALE: 1.2,                  // ✅ NEW - reasonable size
-    POSITION: { x: 0, y: 0.2, z: -5 },  // ✅ NEW - much further back
+    SCALE: 1.2,                  // CHANGE from 1.8 to 1.2
+    POSITION: { x: 0, y: 0.2, z: -5 },  // CHANGE z from -1.5 to -5, y from 0 to 0.2
     ROTATION: { x: 0, y: Math.PI, z: 0 }
 },
 
@@ -60,7 +60,7 @@ const CONFIG = {
         TORSO: 1.0,
         ARMS: 1.0
     },
-    BASE_SCALE: 2.5,             // ✅ NEW - better scale
+  BASE_SCALE: 2.5,             // CHANGE from 3.5 to 2.5
     DEPTH_OFFSET: -5,        // ✅ FIXED: Closer depth
         VERTICAL_OFFSET: 0.0,
         HORIZONTAL_OFFSET: 0.0,
