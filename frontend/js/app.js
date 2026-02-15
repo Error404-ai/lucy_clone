@@ -78,44 +78,41 @@ class LucyApp {
         }
     }
 
-    async start() {
-        if (!this.isInitialized) {
-            throw new Error('App not initialized');
+   async start() {
+    if (!this.isInitialized) {
+        throw new Error('App not initialized');
+    }
+
+    try {
+        console.log('Starting application...');
+
+        // IMPORTANT: get real video element
+        const video = cameraManager.getVideoElement();
+
+        // Start pose tracking with video
+        await poseTracker.start(video);
+
+        poseTracker.onPoseUpdate((poseData) => {
+            this.onPoseUpdate(poseData);
+        });
+
+        compositeRenderer.start();
+
+        if (aiPipeline.isActive()) {
+            aiPipeline.start();
         }
 
-        try {
-            console.log('Starting application...');
-            
-            // Start pose tracking
-            await poseTracker.start();
-            
-            // Register pose update callback
-            poseTracker.onPoseUpdate((poseData) => {
-                this.onPoseUpdate(poseData);
-            });
-            
-            // Start renderer
-            compositeRenderer.start();
-            
-            // Start AI pipeline (if connected)
-            if (aiPipeline.isActive()) {
-                aiPipeline.start();
-            }
-            
-            // Hide loading screen
-            Utils.hideLoadingScreen();
-            
-            // Show pose guide
-            this.showPoseGuide();
-            
-            this.isRunning = true;
-            console.log('✅ Application running!');
-            
-        } catch (error) {
-            console.error('Failed to start application:', error);
-            throw error;
-        }
+        Utils.hideLoadingScreen();
+        this.showPoseGuide();
+
+        this.isRunning = true;
+        console.log('✅ Application running!');
+
+    } catch (error) {
+        console.error('Failed to start application:', error);
+        throw error;
     }
+}
 
     onPoseUpdate(poseData) {
         // Update skeleton mapper with new pose data
