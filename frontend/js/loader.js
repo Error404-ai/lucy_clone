@@ -26,12 +26,10 @@ class ModelLoader {
                 if (this.jacketMeshes.length === 0)
                     return reject('No valid clothing mesh found');
 
-                this.normalizeModelSize();
-                this.centerPivotToChest();
-
-                // AR default transform
-                this.jacketModel.position.set(0, 0, -2);
-                this.jacketModel.scale.setScalar(1);
+                // DO NOT normalize real-world meters
+this.jacketModel.scale.setScalar(0.01); // critical
+this.jacketModel.position.set(0,0,0);
+this.jacketModel.rotation.set(0,Math.PI,0);
                 this.jacketModel.rotation.set(0, Math.PI, 0);
 
                 this.jacketModel.visible = false;
