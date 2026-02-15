@@ -81,7 +81,12 @@ worldPos.add(viewDir.multiplyScalar(0.45));
     const dy = RS.y - LS.y;
     const roll = Math.atan2(dy, dx);
 
-    this.model.rotation.set(0, Math.PI, -roll * 0.7);
+    // face camera correctly (human chest forward)
+this.model.rotation.set(
+    0,
+    Math.PI + Math.PI/2,
+    bodyRoll
+);
 
     this.model.visible = true;
 }
