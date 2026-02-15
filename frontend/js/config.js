@@ -38,7 +38,7 @@ const CONFIG = {
     },
 
     JACKET: {
-        MODEL_PATH: 'assets/models/Jacket (2).glb',
+        MODEL_PATH: 'assets/models/Jacket.glb',
         SCALE: 2.5,              // ✅ FIXED: Smaller - torso only
         POSITION: { x: 0, y: 0.5, z: -1 },  // ✅ FIXED: Upper body
         ROTATION: { x: 0, y: Math.PI, z: 0 }
