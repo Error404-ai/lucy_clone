@@ -1,4 +1,3 @@
-
 class MaterialsManager {
     constructor() {
         this.currentMaterial = null;
@@ -6,23 +5,21 @@ class MaterialsManager {
         this.defaultMaterial = null;
     }
 
-    /**
-     * Initialize with default material
-     */
+    /* ---------------- INIT ---------------- */
+
     init() {
         this.defaultMaterial = new THREE.MeshStandardMaterial({
             color: 0x1a1a1a,
-            roughness: 0.8,
-            metalness: 0.0,
+            roughness: 0.85,
+            metalness: 0.05,
             side: THREE.DoubleSide
         });
 
         console.log('✅ Default material created');
     }
 
-    /**
-     * Apply fabric to jacket meshes
-     */
+    /* ---------------- APPLY FABRIC ---------------- */
+
     async applyFabric(fabricData) {
         try {
             console.log('🎨 Applying fabric:', fabricData.name);
@@ -34,12 +31,12 @@ class MaterialsManager {
             }
 
             const jacketMeshes = modelLoader.getMeshes();
-            if (jacketMeshes.length === 0) {
+            if (!jacketMeshes || jacketMeshes.length === 0) {
                 console.error('❌ No jacket meshes found');
                 return false;
             }
 
-           console.log(`✅ Fabric applied to ${appliedCount} mesh(es)`);
+            /* ---------- CREATE MATERIAL ---------- */
 
             let newMaterial;
 
@@ -52,8 +49,8 @@ class MaterialsManager {
 
                     newMaterial = new THREE.MeshStandardMaterial({
                         color: colorValue,
-                        roughness: fabricData.roughness ?? 0.8,
-                        metalness: fabricData.metalness ?? 0.0,
+                        roughness: fabricData.roughness ?? 0.85,
+                        metalness: fabricData.metalness ?? 0.05,
                         side: THREE.DoubleSide
                     });
 
@@ -67,46 +64,48 @@ class MaterialsManager {
                 newMaterial = this.defaultMaterial.clone();
             }
 
+            /* ---------- APPLY TO MESHES ---------- */
+
             let appliedCount = 0;
 
             for (const mesh of jacketMeshes) {
                 try {
-                    if (!mesh || !mesh.isMesh) continue;
+                    if (!mesh || !(mesh.isMesh || mesh.isSkinnedMesh)) continue;
 
                     const oldMaterial = mesh.material;
 
-                    // ===== APPLY MATERIAL =====
                     mesh.material = newMaterial.clone();
 
-                    // ⭐⭐⭐ VERY IMPORTANT AR FIXES ⭐⭐⭐
-                    mesh.material.depthWrite = true;      // jacket writes depth
-                    mesh.material.depthTest = true;       // jacket respects depth
+                    /* ⭐⭐⭐ AR DEPTH FIX ⭐⭐⭐ */
+                    mesh.material.depthWrite = false;  // VERY IMPORTANT
+                    mesh.material.depthTest = true;
                     mesh.material.transparent = false;
                     mesh.material.opacity = 1.0;
                     mesh.material.side = THREE.DoubleSide;
 
-                    // Shadows OFF (prevents black artifacts on webcam)
                     mesh.castShadow = false;
                     mesh.receiveShadow = false;
 
                     // Render AFTER video plane
-                    mesh.renderOrder = 1;
+                    mesh.renderOrder = 10;
 
                     mesh.frustumCulled = false;
                     mesh.material.needsUpdate = true;
 
                     appliedCount++;
 
-                 console.log(`✅ Applied to: "${mesh.name}"`);
+console.log(`✅ Applied to: "${mesh.name}"`);
 
                     if (oldMaterial && oldMaterial !== this.defaultMaterial) {
                         try { oldMaterial.dispose(); } catch {}
                     }
 
                 } catch (meshError) {
-                   console.error(`❌ Failed on mesh ${mesh.name}:`, meshError);
+console.error(`❌ Failed on mesh ${mesh.name}:`, meshError);
                 }
             }
+
+            /* ---------- FINALIZE ---------- */
 
             if (appliedCount > 0) {
                 this.currentMaterial = newMaterial;
@@ -114,8 +113,8 @@ class MaterialsManager {
 
                 modelLoader.setVisible(true);
 
-               console.log(`🎯 Targeting ${jacketMeshes.length} jacket mesh(es)`);
-                console.log('📊 Layering: Video(-1000) → Jacket(1)');
+console.log(`✅ Fabric applied to ${appliedCount} mesh(es)`);
+                console.log('📊 Layering: Video(-1000) → Jacket(10)');
 
                 try { sceneManager.render(); } catch {}
 
@@ -141,22 +140,18 @@ class MaterialsManager {
         }
     }
 
-    /**
-     * Get current fabric
-     */
+    /* ---------------- HELPERS ---------------- */
+
     getCurrentFabric() {
         return this.currentFabric;
     }
 
-    /**
-     * Reset materials
-     */
     reset() {
         try {
             const jacketMeshes = modelLoader.getMeshes();
             jacketMeshes.forEach(mesh => {
                 mesh.material = this.defaultMaterial.clone();
-                mesh.renderOrder = 1;
+                mesh.renderOrder = 10;
             });
 
             console.log('✅ Materials reset');
@@ -165,9 +160,6 @@ class MaterialsManager {
         }
     }
 
-    /**
-     * Cleanup
-     */
     dispose() {
         if (this.currentMaterial && this.currentMaterial !== this.defaultMaterial) {
             this.currentMaterial.dispose();
