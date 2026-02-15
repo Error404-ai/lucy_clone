@@ -37,12 +37,12 @@ const CONFIG = {
         DIRECTIONAL_LIGHT_INTENSITY: 0.8
     },
 
-    JACKET: {
-        MODEL_PATH: 'assets/models/Jacket.glb',
-        SCALE: 1.8,                  // ✅ FIXED: Smaller scale for proper fit
-        POSITION: { x: 0, y: 0, z: -1.5 },  // ✅ FIXED: Closer to camera
-        ROTATION: { x: 0, y: Math.PI, z: 0 }
-    },
+  JACKET: {
+    MODEL_PATH: 'assets/models/Jacket.glb',
+    SCALE: 1.2,                  // ✅ NEW - reasonable size
+    POSITION: { x: 0, y: 0.2, z: -5 },  // ✅ NEW - much further back
+    ROTATION: { x: 0, y: Math.PI, z: 0 }
+},
 
     POSE: {
         MODEL_COMPLEXITY: 0,
@@ -53,15 +53,15 @@ const CONFIG = {
         ENABLE_SEGMENTATION: false
     },
 
-    SKELETON: {
-        SMOOTHING_FACTOR: 0.3,       // ✅ More smoothing
-        SCALE_MULTIPLIERS: {
-            SHOULDERS: 1.0,
-            TORSO: 1.0,
-            ARMS: 1.0
-        },
-        BASE_SCALE: 3.5,             // ✅ FIXED: Much smaller base scale
-        DEPTH_OFFSET: -1.5,          // ✅ FIXED: Closer depth
+   SKELETON: {
+    SMOOTHING_FACTOR: 0.3,
+    SCALE_MULTIPLIERS: {
+        SHOULDERS: 1.0,
+        TORSO: 1.0,
+        ARMS: 1.0
+    },
+    BASE_SCALE: 2.5,             // ✅ NEW - better scale
+    DEPTH_OFFSET: -5,        // ✅ FIXED: Closer depth
         VERTICAL_OFFSET: 0.0,
         HORIZONTAL_OFFSET: 0.0,
         POSITION_SCALE_X: 3.0,       // ✅ Reduced positioning scale
