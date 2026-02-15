@@ -87,7 +87,8 @@ class LucyApp {
         console.log('Starting application...');
 
         // IMPORTANT: get real video element
-        const video = cameraManager.getVideoElement();
+       const video = document.getElementById("camera-video");
+await poseTracker.start(video);
 
         // Start pose tracking with video
         await poseTracker.start(video);
