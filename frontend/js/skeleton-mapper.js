@@ -1,3 +1,5 @@
+// Skeleton Mapper - FIXED for proper face + torso visibility
+
 class SkeletonMapper {
     constructor() {
         this.width = 0;
@@ -10,7 +12,7 @@ class SkeletonMapper {
         this.smooth = {
             pos: { x: 0, y: 0, z: -2 },
             rot: { x: 0, y: Math.PI, z: 0 },
-            scale: 2
+            scale: 1.5                    // ✅ FIXED: Start smaller
         };
     }
 
@@ -18,25 +20,24 @@ class SkeletonMapper {
         this.width = w;
         this.height = h;
         this.initialized = true;
+        console.log('✅ SkeletonMapper initialized:', w, 'x', h);
     }
 
-    // ⭐ NEW — store jacket reference
     setJacket(jacket) {
         this.jacket = jacket;
+        console.log('🔗 Jacket linked to SkeletonMapper');
     }
 
-    // ⭐ NEW — used by fabric selector
     forceShowJacket() {
         if (this.jacket) {
             this.jacket.visible = true;
-            console.log("👁 Jacket forced visible");
+            console.log('👁 Jacket forced visible');
         }
     }
 
     update(poseData) {
         if (!poseData?.landmarks) return;
 
-        // Use stored jacket OR fallback to loader
         const jacket = this.jacket || modelLoader.getModel();
         if (!jacket) return;
 
@@ -50,16 +51,16 @@ class SkeletonMapper {
 
         if (!LS || !RS || !LH || !RH) return;
 
-        // ---- position ----
+        // ---- position (torso center, adjusted up for face visibility) ----
         const center = {
             x: (LS.x + RS.x + LH.x + RH.x) / 4,
-            y: (LS.y + RS.y + LH.y + RH.y) / 4,
+            y: (LS.y + RS.y) / 2,          // ✅ FIXED: Use shoulder midpoint (higher)
             z: (LS.z + RS.z + LH.z + RH.z) / 4
         };
 
         const aspect = this.width / this.height;
         const x = (center.x - 0.5) * aspect * 2;
-        const y = -(center.y - 0.5) * 2;
+        const y = -(center.y - 0.45) * 2;  // ✅ FIXED: Offset to show face
 
         const shoulderDist = Math.sqrt(
             (LS.x - RS.x) ** 2 +
@@ -69,7 +70,8 @@ class SkeletonMapper {
 
         if (shoulderDist < 0.001) return;
 
-        const z = -2.5 / shoulderDist;
+        // ✅ FIXED: Adjust Z distance for proper viewing (not too close, not too far)
+        const z = -2.0 / shoulderDist;
 
         // ---- rotation ----
         const dx = RS.x - LS.x;
@@ -79,12 +81,13 @@ class SkeletonMapper {
         const yaw = Math.atan2(dz, dx);
         const roll = Math.atan2(dy, dx);
 
-        // ---- scale ----
-        const scale = Utils.clamp(1.6 / shoulderDist, 1.8, 3.8);
+        // ---- scale (smaller range for proper fit) ----
+        const rawScale = 1.5 / shoulderDist;
+        const scale = Utils.clamp(rawScale, 1.2, 2.5);  // ✅ FIXED: Much smaller range
 
         // ---- smoothing ----
-        this.smooth.pos = Utils.lerp3(this.smooth.pos, { x, y, z }, 0.25);
-        this.smooth.rot = Utils.lerp3(
+        this.smooth.pos = this.lerp3(this.smooth.pos, { x, y, z }, 0.25);
+        this.smooth.rot = this.lerp3(
             this.smooth.rot,
             { x: 0, y: Math.PI - yaw, z: -roll },
             0.3
@@ -104,6 +107,18 @@ class SkeletonMapper {
         );
 
         jacket.scale.setScalar(this.smooth.scale);
+        
+        // ✅ Force visibility
+        jacket.visible = true;
+    }
+    
+    // Helper method for 3D lerp
+    lerp3(start, end, t) {
+        return {
+            x: Utils.lerp(start.x, end.x, t),
+            y: Utils.lerp(start.y, end.y, t),
+            z: Utils.lerp(start.z, end.z, t)
+        };
     }
 }
 

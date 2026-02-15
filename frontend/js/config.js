@@ -1,4 +1,4 @@
-// Configuration - CORRECTED FOR FACE VISIBILITY
+// Configuration - FIXED FOR PROPER FACE + TORSO VIEW
 
 const CONFIG = {
     API: {
@@ -29,18 +29,18 @@ const CONFIG = {
 
     SCENE: {
         BACKGROUND_COLOR: 0x000000,
-        CAMERA_FOV: 60,          // ✅ Balanced - see face + torso
+        CAMERA_FOV: 75,              // ✅ FIXED: Wider FOV to see face + torso
         CAMERA_NEAR: 0.1,
         CAMERA_FAR: 2000,
-        CAMERA_DISTANCE: 5,      // ✅ Far enough to see both
+        CAMERA_DISTANCE: 5,
         AMBIENT_LIGHT_INTENSITY: 0.9,
         DIRECTIONAL_LIGHT_INTENSITY: 0.8
     },
 
     JACKET: {
         MODEL_PATH: 'assets/models/Jacket.glb',
-        SCALE: 2.5,              // ✅ FIXED: Smaller - torso only
-        POSITION: { x: 0, y: 0.5, z: -1 },  // ✅ FIXED: Upper body
+        SCALE: 1.8,                  // ✅ FIXED: Smaller scale for proper fit
+        POSITION: { x: 0, y: 0, z: -1.5 },  // ✅ FIXED: Closer to camera
         ROTATION: { x: 0, y: Math.PI, z: 0 }
     },
 
@@ -53,36 +53,36 @@ const CONFIG = {
         ENABLE_SEGMENTATION: false
     },
 
-SKELETON: {
-    SMOOTHING_FACTOR: 0.2,
-    SCALE_MULTIPLIERS: {
-        SHOULDERS: 1.0,
-        TORSO: 1.0,
-        ARMS: 1.0
+    SKELETON: {
+        SMOOTHING_FACTOR: 0.3,       // ✅ More smoothing
+        SCALE_MULTIPLIERS: {
+            SHOULDERS: 1.0,
+            TORSO: 1.0,
+            ARMS: 1.0
+        },
+        BASE_SCALE: 3.5,             // ✅ FIXED: Much smaller base scale
+        DEPTH_OFFSET: -1.5,          // ✅ FIXED: Closer depth
+        VERTICAL_OFFSET: 0.0,
+        HORIZONTAL_OFFSET: 0.0,
+        POSITION_SCALE_X: 3.0,       // ✅ Reduced positioning scale
+        POSITION_SCALE_Y: 3.0,       // ✅ Reduced positioning scale
+        MIN_SCALE: 1.5,              // ✅ FIXED: Smaller minimum
+        MAX_SCALE: 3.0,              // ✅ FIXED: Smaller maximum
+        
+        LANDMARKS: {
+            NOSE: 0,
+            LEFT_EYE: 2,
+            RIGHT_EYE: 5,
+            LEFT_SHOULDER: 11,
+            RIGHT_SHOULDER: 12,
+            LEFT_ELBOW: 13,
+            RIGHT_ELBOW: 14,
+            LEFT_WRIST: 15,
+            RIGHT_WRIST: 16,
+            LEFT_HIP: 23,
+            RIGHT_HIP: 24
+        }
     },
-    BASE_SCALE: 6.0,        // ⬅️ FIXED: Was 15.0 or 18.0
-    DEPTH_OFFSET: -1.0,
-    VERTICAL_OFFSET: 0.0,
-    HORIZONTAL_OFFSET: 0.0,
-    POSITION_SCALE_X: 4.0,
-    POSITION_SCALE_Y: 4.0,
-    MIN_SCALE: 2.0,         // ⬅️ FIXED: Was 8.0
-    MAX_SCALE: 4.0,         // ⬅️ FIXED: Was 20.0
-    
-    LANDMARKS: {
-        NOSE: 0,
-        LEFT_EYE: 2,
-        RIGHT_EYE: 5,
-        LEFT_SHOULDER: 11,
-        RIGHT_SHOULDER: 12,
-        LEFT_ELBOW: 13,
-        RIGHT_ELBOW: 14,
-        LEFT_WRIST: 15,
-        RIGHT_WRIST: 16,
-        LEFT_HIP: 23,
-        RIGHT_HIP: 24
-    }
-},
 
     AI_PIPELINE: {
         ENABLED: true,
@@ -109,7 +109,7 @@ SKELETON: {
     },
 
     UI: {
-        POSE_GUIDE_DURATION: 2000,
+        POSE_GUIDE_DURATION: 3000,   // ✅ Show guide longer
         HIDE_CONTROLS_DELAY: 5000,
         TOAST_DURATION: 3000
     },

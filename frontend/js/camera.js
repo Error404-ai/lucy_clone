@@ -1,4 +1,4 @@
-// Camera Manager - FIXED with demo mode that handles autoplay restrictions
+// Camera Manager - FIXED to properly display video
 
 class CameraManager {
     constructor() {
@@ -17,28 +17,23 @@ class CameraManager {
         try {
             console.log('🎥 Initializing camera...');
             
+            // ✅ CRITICAL: Make video element accessible but hidden from user view
+            this.video.style.display = 'block';
+            this.video.style.position = 'fixed';
+            this.video.style.top = '0';
+            this.video.style.left = '0';
+            this.video.style.width = '1px';
+            this.video.style.height = '1px';
+            this.video.style.opacity = '0';
+            this.video.style.zIndex = '-1';
+            
             // Check if mediaDevices is supported
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 console.warn('⚠️ Camera API not supported - entering demo mode');
                 return await this.initDemoMode();
             }
             
-            // First, enumerate devices to see what's available
-            try {
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                const videoDevices = devices.filter(d => d.kind === 'videoinput');
-                console.log(`📹 Found ${videoDevices.length} video input device(s)`);
-                
-                if (videoDevices.length === 0) {
-                    console.warn('⚠️ No camera devices found - entering demo mode');
-                    return await this.initDemoMode();
-                }
-            } catch (enumError) {
-                console.warn('⚠️ Could not enumerate devices:', enumError);
-                // Continue to try camera access anyway
-            }
-            
-            // Request camera access with better constraints
+            // Request camera access
             const constraints = {
                 video: {
                     width: { ideal: CONFIG.CAMERA.WIDTH },
@@ -54,23 +49,29 @@ class CameraManager {
             
             console.log('✅ Camera access granted');
             this.video.srcObject = this.stream;
+            this.video.muted = true;
+            this.video.playsInline = true;
             
-            // Wait for video to be ready
+            // ✅ CRITICAL: Wait for video to be ready and play
             await new Promise((resolve, reject) => {
                 this.video.onloadedmetadata = () => {
+                    console.log('📹 Video metadata loaded:', this.video.videoWidth, 'x', this.video.videoHeight);
                     this.video.play()
                         .then(() => {
                             console.log('✅ Video playing');
                             resolve();
                         })
-                        .catch(reject);
+                        .catch(error => {
+                            console.error('❌ Video play error:', error);
+                            reject(error);
+                        });
                 };
                 
                 // Timeout after 10 seconds
                 setTimeout(() => reject(new Error('Video load timeout')), 10000);
             });
 
-            // Get available devices AFTER getting permission
+            // Get available devices
             await this.getDevices();
 
             this.isActive = true;
@@ -88,18 +89,14 @@ class CameraManager {
             
             // Better error messages and fallbacks
             if (error.name === 'NotAllowedError') {
-                // Don't throw - go to demo mode instead
-                console.warn('⚠️ Camera permission denied - entering demo mode');
+                Utils.showError('Camera permission denied. Please allow camera access and reload.');
                 return await this.initDemoMode();
             } else if (error.name === 'NotFoundError') {
-                console.warn('⚠️ No camera found - entering demo mode');
+                Utils.showError('No camera found. Using demo mode.');
                 return await this.initDemoMode();
             } else if (error.name === 'NotReadableError') {
-                console.warn('⚠️ Camera in use - entering demo mode');
+                Utils.showError('Camera is in use by another app. Using demo mode.');
                 return await this.initDemoMode();
-            } else if (error.name === 'OverconstrainedError') {
-                console.log('⚠️ Trying with minimal constraints...');
-                return await this.initWithMinimalConstraints();
             } else {
                 console.warn('⚠️ Camera error - entering demo mode');
                 return await this.initDemoMode();
@@ -162,17 +159,17 @@ class CameraManager {
             // Draw initial frame
             drawDemoFrame();
             
-            // 🔥 FIX: Use captureStream without trying to play it
+            // Use captureStream
             this.stream = canvas.captureStream(30);
             this.video.srcObject = this.stream;
-            this.video.muted = true; // Ensure muted for autoplay
-            this.video.playsInline = true; // Important for mobile
+            this.video.muted = true;
+            this.video.playsInline = true;
             
             this.demoCanvas = canvas;
             this.demoCtx = ctx;
             this.isDemoMode = true;
             
-            // 🔥 FIX: Don't await play() - handle the promise
+            // Try to play
             const playPromise = this.video.play();
             
             if (playPromise !== undefined) {
@@ -181,13 +178,11 @@ class CameraManager {
                         console.log('✅ Demo video playing');
                     })
                     .catch(error => {
-                        // Autoplay blocked - that's OK in demo mode
                         console.log('⚠️ Autoplay blocked (expected):', error.message);
-                        // Video will be "playing" from stream perspective even if blocked
                     });
             }
             
-            // Animate demo mode - use requestAnimationFrame instead of setInterval
+            // Animate demo mode
             const animate = () => {
                 if (this.isDemoMode) {
                     drawDemoFrame();
@@ -196,14 +191,12 @@ class CameraManager {
             };
             animate();
             
-            // Give it a moment to initialize
             await new Promise(resolve => setTimeout(resolve, 100));
             
             this.isActive = true;
             Utils.updateStatus('camera', true);
             console.log('✅ Demo mode initialized:', canvas.width, 'x', canvas.height);
             
-            // Show user-friendly message
             setTimeout(() => {
                 Utils.showError('Running in demo mode - jacket will appear in center');
             }, 500);
@@ -215,48 +208,12 @@ class CameraManager {
             
         } catch (error) {
             console.error('❌ Demo mode failed:', error);
-            // Even if demo mode fails, return dimensions so app can continue
             this.isActive = true;
             Utils.updateStatus('camera', true);
             return {
                 width: canvas.width,
                 height: canvas.height
             };
-        }
-    }
-
-    async initWithMinimalConstraints() {
-        try {
-            const constraints = {
-                video: true,
-                audio: false
-            };
-
-            console.log('📸 Requesting camera with minimal constraints...');
-            this.stream = await navigator.mediaDevices.getUserMedia(constraints);
-            this.video.srcObject = this.stream;
-            this.video.muted = true;
-            this.video.playsInline = true;
-            
-            await new Promise((resolve) => {
-                this.video.onloadedmetadata = () => {
-                    this.video.play().then(resolve).catch(() => resolve());
-                };
-            });
-
-            await this.getDevices();
-
-            this.isActive = true;
-            Utils.updateStatus('camera', true);
-            console.log('✅ Camera initialized (minimal constraints)');
-            
-            return {
-                width: this.video.videoWidth,
-                height: this.video.videoHeight
-            };
-        } catch (error) {
-            console.warn('⚠️ Minimal constraints also failed - entering demo mode');
-            return await this.initDemoMode();
         }
     }
 
@@ -275,42 +232,8 @@ class CameraManager {
         }
     }
 
-    async switchCamera(deviceId) {
-        if (!deviceId || deviceId === this.currentDeviceId || this.isDemoMode) return;
-        
-        try {
-            this.stop();
-            
-            const constraints = {
-                video: {
-                    deviceId: { exact: deviceId },
-                    width: { ideal: CONFIG.CAMERA.WIDTH },
-                    height: { ideal: CONFIG.CAMERA.HEIGHT },
-                    frameRate: { ideal: CONFIG.CAMERA.FRAME_RATE }
-                },
-                audio: false
-            };
-
-            this.stream = await navigator.mediaDevices.getUserMedia(constraints);
-            this.video.srcObject = this.stream;
-            this.video.muted = true;
-            this.video.playsInline = true;
-            this.currentDeviceId = deviceId;
-            
-            await new Promise((resolve) => {
-                this.video.onloadedmetadata = () => {
-                    this.video.play().then(resolve).catch(() => resolve());
-                };
-            });
-
-            this.isActive = true;
-            Utils.updateStatus('camera', true);
-            console.log('✅ Switched to camera:', deviceId);
-            
-        } catch (error) {
-            console.error('Error switching camera:', error);
-            Utils.showError('Could not switch camera');
-        }
+    getVideoElement() {
+        return this.video;
     }
 
     getFrame() {
@@ -360,7 +283,6 @@ class CameraManager {
     }
 
     isReady() {
-        // In demo mode, we're always "ready"
         if (this.isDemoMode) return this.isActive;
         return this.isActive && this.video.readyState === this.video.HAVE_ENOUGH_DATA;
     }

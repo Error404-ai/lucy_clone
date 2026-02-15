@@ -1,4 +1,4 @@
-// Utility functions for Lucy Virtual Try-On
+// Utility functions for Lucy Virtual Try-On - FIXED VERSION
 
 const Utils = {
     /**
@@ -7,12 +7,14 @@ const Utils = {
     showError(message) {
         const toast = document.getElementById('error-toast');
         const messageEl = document.getElementById('error-message');
-        messageEl.textContent = message;
-        toast.classList.add('show');
-        
-        setTimeout(() => {
-            toast.classList.remove('show');
-        }, CONFIG.UI.TOAST_DURATION);
+        if (messageEl && toast) {
+            messageEl.textContent = message;
+            toast.classList.add('show');
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, CONFIG.UI.TOAST_DURATION);
+        }
     },
 
     /**
@@ -103,7 +105,6 @@ const Utils = {
      */
     async shareImage(dataUrl, title = 'Lucy Virtual Try-On') {
         try {
-            // Convert data URL to blob
             const response = await fetch(dataUrl);
             const blob = await response.blob();
             const file = new File([blob], 'lucy-tryon.png', { type: 'image/png' });
@@ -116,7 +117,6 @@ const Utils = {
                 });
                 return true;
             } else {
-                // Fallback: copy to clipboard
                 await navigator.clipboard.write([
                     new ClipboardItem({ 'image/png': blob })
                 ]);
@@ -142,6 +142,17 @@ const Utils = {
      */
     lerp(start, end, t) {
         return start + (end - start) * t;
+    },
+
+    /**
+     * 3D Linear interpolation
+     */
+    lerp3(start, end, t) {
+        return {
+            x: this.lerp(start.x, end.x, t),
+            y: this.lerp(start.y, end.y, t),
+            z: this.lerp(start.z, end.z, t)
+        };
     },
 
     /**
@@ -193,7 +204,8 @@ const Utils = {
         const missing = Object.keys(required).filter(key => !required[key]);
         
         if (missing.length > 0) {
-            throw new Error(`Browser missing required features: ${missing.join(', ')}`);
+            console.warn(`Browser missing features: ${missing.join(', ')}`);
+            // Don't throw - continue with demo mode
         }
 
         return true;
