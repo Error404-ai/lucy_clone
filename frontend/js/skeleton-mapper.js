@@ -53,8 +53,12 @@ update(landmarks) {
     // THIS is the real fix
     const DEPTH = 3.8;   // was 2.2 → camera was inside jacket
 
-    const worldPos = compositeRenderer.getWorldPositionFromScreen(cx, cy, DEPTH);
+const worldPos = compositeRenderer.getWorldPositionFromScreen(cx, cy, DEPTH);
 
+// push jacket backward so camera is outside chest
+const camera = sceneManager.getCamera();
+const viewDir = worldPos.clone().sub(camera.position).normalize();
+worldPos.add(viewDir.multiplyScalar(0.45));
     this.smooth.position.lerp(worldPos, 0.25);
     this.model.position.copy(this.smooth.position);
 
