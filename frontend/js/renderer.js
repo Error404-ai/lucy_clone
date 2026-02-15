@@ -14,9 +14,11 @@ class CompositeRenderer {
         this.fpsHistorySize = 10;
     }
 
+    /* ================= INIT ================= */
+
     init(width, height) {
         try {
-            console.log('🎬 Initializing Renderer...');
+            console.log('🎬 Initializing AR Renderer...');
 
             this.width = width;
             this.height = height;
@@ -30,7 +32,10 @@ class CompositeRenderer {
 
             this.setupVideoBackground();
 
-            window.addEventListener('resize', Utils.debounce(() => this.onResize(), 250));
+            window.addEventListener(
+                'resize',
+                Utils.debounce(() => this.onResize(), 250)
+            );
 
             console.log('✅ Renderer initialized');
 
@@ -39,6 +44,8 @@ class CompositeRenderer {
             throw error;
         }
     }
+
+    /* ================= VIDEO BACKGROUND ================= */
 
     setupVideoBackground() {
         const video = cameraManager.video;
@@ -54,64 +61,68 @@ class CompositeRenderer {
                 setTimeout(waitForVideo, 100);
             }
         };
+
         waitForVideo();
     }
 
+    /**
+     * ⭐ CRITICAL FIX
+     * Attach video to camera (NOT world)
+     * This makes video a background, not an object blocking 3D
+     */
     createVideoTexture(video) {
-        console.log('🎥 Creating video texture...');
+        console.log('🎥 Creating AR video background...');
 
         this.videoTexture = new THREE.VideoTexture(video);
         this.videoTexture.minFilter = THREE.LinearFilter;
         this.videoTexture.magFilter = THREE.LinearFilter;
-
-        // ⭐ FIXED (prevents red/black screen on some GPUs)
         this.videoTexture.format = THREE.RGBAFormat;
         this.videoTexture.colorSpace = THREE.SRGBColorSpace;
 
         const camera = sceneManager.getCamera();
 
-        const distance = Math.abs(camera.position.z - (-10));
-        const vFOV = THREE.MathUtils.degToRad(camera.fov);
-        const planeHeight = 2 * Math.tan(vFOV / 2) * distance;
-        const planeWidth = planeHeight * camera.aspect;
-
-        const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
+        // Fullscreen quad (screen-space)
+        const geometry = new THREE.PlaneGeometry(2, 2);
 
         const material = new THREE.MeshBasicMaterial({
             map: this.videoTexture,
-            side: THREE.FrontSide,
             depthWrite: false,
             depthTest: false,
             toneMapped: false
         });
 
         this.videoPlane = new THREE.Mesh(geometry, material);
-        this.videoPlane.position.set(0, 0, -10);
-        this.videoPlane.renderOrder = -1000;
-        this.videoPlane.visible = true;
 
-        sceneManager.add(this.videoPlane);
+        // Attach to camera instead of scene
+        this.videoPlane.position.set(0, 0, -1);
+        this.videoPlane.renderOrder = -9999;
 
-        console.log('✅ Video background ready');
+        camera.add(this.videoPlane);
+
+        // ensure camera is root scene object
+        sceneManager.getScene().add(camera);
+
+        console.log('✅ AR background attached to camera');
     }
 
-    // ⭐⭐⭐ CORE FUNCTION — SCREEN → WORLD CONVERSION ⭐⭐⭐
+    /* ================= SCREEN → WORLD ================= */
+
     getWorldPositionFromScreen(nx, ny, depth = 2.2) {
+        const camera = sceneManager.getCamera();
 
-    const camera = sceneManager.getCamera();
+        // normalized device coords
+        const x = (nx - 0.5) * 2;
+        const y = -(ny - 0.5) * 2;
 
-    // convert to NDC (-1 to +1)
-    const x = (nx - 0.5) * 2;
-    const y = -(ny - 0.5) * 2;
+        const vector = new THREE.Vector3(x, y, 0.5);
+        vector.unproject(camera);
 
-    const vector = new THREE.Vector3(x, y, 0.5);
-    vector.unproject(camera);
+        const dir = vector.sub(camera.position).normalize();
 
-    const dir = vector.sub(camera.position).normalize();
+        return camera.position.clone().add(dir.multiplyScalar(depth));
+    }
 
-    const distance = depth;
-    return camera.position.clone().add(dir.multiplyScalar(distance));
-}
+    /* ================= RENDER LOOP ================= */
 
     start() {
         if (this.isRunning) return;
@@ -142,7 +153,7 @@ class CompositeRenderer {
             if (delta < targetDelta - 1) return;
             this.lastRenderTime = now;
 
-            // ⭐ FIXED video refresh check
+            // update webcam frame
             if (this.videoTexture && cameraManager.video?.readyState >= 2) {
                 this.videoTexture.needsUpdate = true;
             }
@@ -155,6 +166,8 @@ class CompositeRenderer {
         }
     }
 
+    /* ================= CAPTURE ================= */
+
     captureFrame() {
         if (!this.canvas) return null;
 
@@ -162,6 +175,7 @@ class CompositeRenderer {
             if (this.videoTexture && cameraManager.video?.readyState >= 2) {
                 this.videoTexture.needsUpdate = true;
             }
+
             sceneManager.render();
             return this.canvas.toDataURL('image/png', 0.95);
 
@@ -170,6 +184,8 @@ class CompositeRenderer {
             return null;
         }
     }
+
+    /* ================= FPS ================= */
 
     updateFPS() {
         this.frameCount++;
@@ -195,6 +211,8 @@ class CompositeRenderer {
         }
     }
 
+    /* ================= RESIZE ================= */
+
     onResize() {
         const displayWidth = this.canvas.clientWidth || window.innerWidth;
         const displayHeight = this.canvas.clientHeight || window.innerHeight;
@@ -217,6 +235,8 @@ class CompositeRenderer {
         return this.fps;
     }
 
+    /* ================= CLEANUP ================= */
+
     dispose() {
         this.stop();
 
@@ -225,7 +245,6 @@ class CompositeRenderer {
         if (this.videoPlane) {
             this.videoPlane.geometry.dispose();
             this.videoPlane.material.dispose();
-            sceneManager.remove(this.videoPlane);
         }
     }
 }
