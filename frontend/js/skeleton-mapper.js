@@ -64,10 +64,12 @@ worldPos.add(viewDir.multiplyScalar(0.45));
 
     /* ---------- SCALE ---------- */
 
-    const shoulderDist = Math.sqrt(
-        (LS.x - RS.x) ** 2 +
-        (LS.y - RS.y) ** 2
-    );
+ const shoulderDist = Math.sqrt(dx*dx + dy*dy);
+
+// Convert screen ratio → world scale
+const scale = shoulderDist * 6.5;   // MAGIC AR constant
+
+jacket.scale.setScalar(scale);
 
     let targetScale = 1.6 / shoulderDist;
     targetScale = THREE.MathUtils.clamp(targetScale, 1.2, 2.8);
