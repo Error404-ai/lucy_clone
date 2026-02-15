@@ -1,4 +1,4 @@
-// Skeleton Mapper - FIXED for proper face + torso visibility
+// Skeleton Mapper - Modular + Stable
 
 class SkeletonMapper {
     constructor() {
@@ -10,9 +10,9 @@ class SkeletonMapper {
         this.jacket = null;
 
         this.smooth = {
-            pos: { x: 0, y: 0, z: -2 },
+            pos: { x: 0, y: 0, z: -3 },
             rot: { x: 0, y: Math.PI, z: 0 },
-            scale: 1.5                    // ✅ FIXED: Start smaller
+            scale: 1.5
         };
     }
 
@@ -35,63 +35,92 @@ class SkeletonMapper {
         }
     }
 
+    /* ================= POSITION ================= */
+
+    calculatePosition(landmarks) {
+        const L = CONFIG.SKELETON.LANDMARKS;
+
+        const leftShoulder = landmarks[L.LEFT_SHOULDER];
+        const rightShoulder = landmarks[L.RIGHT_SHOULDER];
+
+        if (!leftShoulder || !rightShoulder) {
+            return { x: 0, y: 0, z: -3 };
+        }
+
+        const cx = (leftShoulder.x + rightShoulder.x) / 2;
+        const cy = (leftShoulder.y + rightShoulder.y) / 2;
+
+        const aspect = this.width / this.height;
+
+        const x = (cx - 0.5) * aspect * 2.2;
+        const y = -(cy - 0.45) * 2.8;
+
+        const z = -3; // fixed depth for stability
+
+        return { x, y, z };
+    }
+
+    /* ================= ROTATION ================= */
+
+    calculateRotation(landmarks) {
+        const L = CONFIG.SKELETON.LANDMARKS;
+
+        const leftShoulder = landmarks[L.LEFT_SHOULDER];
+        const rightShoulder = landmarks[L.RIGHT_SHOULDER];
+
+        if (!leftShoulder || !rightShoulder) {
+            return { x: 0, y: Math.PI, z: 0 };
+        }
+
+        const dx = rightShoulder.x - leftShoulder.x;
+        const dy = rightShoulder.y - leftShoulder.y;
+
+        const bodyAngle = Math.atan2(dy, dx);
+
+        return {
+            x: 0,
+            y: Math.PI,
+            z: -bodyAngle * 0.6
+        };
+    }
+
+    /* ================= SCALE ================= */
+
+    calculateScale(landmarks) {
+        const L = CONFIG.SKELETON.LANDMARKS;
+
+        const leftShoulder = landmarks[L.LEFT_SHOULDER];
+        const rightShoulder = landmarks[L.RIGHT_SHOULDER];
+
+        if (!leftShoulder || !rightShoulder) return 1.4;
+
+        const dx = rightShoulder.x - leftShoulder.x;
+        const dy = rightShoulder.y - leftShoulder.y;
+
+        const shoulderWidth = Math.sqrt(dx * dx + dy * dy);
+
+        const scale = shoulderWidth * 7.5;
+
+        return Utils.clamp(scale, 1.2, 2.2);
+    }
+
+    /* ================= UPDATE ================= */
+
     update(poseData) {
         if (!poseData?.landmarks) return;
 
         const jacket = this.jacket || modelLoader.getModel();
         if (!jacket) return;
 
-        const L = CONFIG.SKELETON.LANDMARKS;
-        const lm = poseData.landmarks;
+        const landmarks = poseData.landmarks;
 
-        const LS = lm[L.LEFT_SHOULDER];
-        const RS = lm[L.RIGHT_SHOULDER];
-        const LH = lm[L.LEFT_HIP];
-        const RH = lm[L.RIGHT_HIP];
+        const pos = this.calculatePosition(landmarks);
+        const rot = this.calculateRotation(landmarks);
+        const scale = this.calculateScale(landmarks);
 
-        if (!LS || !RS || !LH || !RH) return;
-
-        // ---- position (torso center, adjusted up for face visibility) ----
-        const center = {
-            x: (LS.x + RS.x + LH.x + RH.x) / 4,
-            y: (LS.y + RS.y) / 2,          // ✅ FIXED: Use shoulder midpoint (higher)
-            z: (LS.z + RS.z + LH.z + RH.z) / 4
-        };
-
-        const aspect = this.width / this.height;
-        const x = (center.x - 0.5) * aspect * 2;
-        const y = -(center.y - 0.45) * 2;  // ✅ FIXED: Offset to show face
-
-        const shoulderDist = Math.sqrt(
-            (LS.x - RS.x) ** 2 +
-            (LS.y - RS.y) ** 2 +
-            (LS.z - RS.z) ** 2
-        );
-
-        if (shoulderDist < 0.001) return;
-
-        // ✅ FIXED: Adjust Z distance for proper viewing (not too close, not too far)
-        const z = -2.0 / shoulderDist;
-
-        // ---- rotation ----
-        const dx = RS.x - LS.x;
-        const dy = RS.y - LS.y;
-        const dz = RS.z - LS.z;
-
-        const yaw = Math.atan2(dz, dx);
-        const roll = Math.atan2(dy, dx);
-
-        // ---- scale (smaller range for proper fit) ----
-        const rawScale = 1.5 / shoulderDist;
-        const scale = Utils.clamp(rawScale, 1.2, 2.5);  // ✅ FIXED: Much smaller range
-
-        // ---- smoothing ----
-        this.smooth.pos = this.lerp3(this.smooth.pos, { x, y, z }, 0.25);
-        this.smooth.rot = this.lerp3(
-            this.smooth.rot,
-            { x: 0, y: Math.PI - yaw, z: -roll },
-            0.3
-        );
+        // smoothing
+        this.smooth.pos = this.lerp3(this.smooth.pos, pos, 0.25);
+        this.smooth.rot = this.lerp3(this.smooth.rot, rot, 0.3);
         this.smooth.scale = Utils.ema(scale, this.smooth.scale, 0.25);
 
         jacket.position.set(
@@ -107,12 +136,12 @@ class SkeletonMapper {
         );
 
         jacket.scale.setScalar(this.smooth.scale);
-        
-        // ✅ Force visibility
+
         jacket.visible = true;
     }
-    
-    // Helper method for 3D lerp
+
+    /* ================= HELPERS ================= */
+
     lerp3(start, end, t) {
         return {
             x: Utils.lerp(start.x, end.x, t),
