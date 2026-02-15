@@ -1,4 +1,4 @@
-// Skeleton Mapper - FIXED with CENTER fallback when no pose detected
+// Skeleton Mapper - FIXED for proper face + torso visibility
 
 class SkeletonMapper {
     constructor() {
@@ -9,16 +9,11 @@ class SkeletonMapper {
         // Jacket reference
         this.jacket = null;
 
-        // Smooth values
         this.smooth = {
             pos: { x: 0, y: 0, z: -2 },
             rot: { x: 0, y: Math.PI, z: 0 },
-            scale: 1.8
+            scale: 1.5                    // ✅ FIXED: Start smaller
         };
-        
-        // Track if we have valid pose
-        this.hasValidPose = false;
-        this.noPoseFrames = 0;
     }
 
     init(w, h) {
@@ -31,62 +26,20 @@ class SkeletonMapper {
     setJacket(jacket) {
         this.jacket = jacket;
         console.log('🔗 Jacket linked to SkeletonMapper');
-        
-        // ✅ CRITICAL: Show jacket in CENTER immediately
-        if (jacket && !this.hasValidPose) {
-            this.showInCenter();
-        }
     }
 
     forceShowJacket() {
         if (this.jacket) {
             this.jacket.visible = true;
             console.log('👁 Jacket forced visible');
-            
-            // Show in center if no pose
-            if (!this.hasValidPose) {
-                this.showInCenter();
-            }
         }
-    }
-
-    /**
-     * Show jacket in center of screen (fallback when no pose detected)
-     */
-    showInCenter() {
-        if (!this.jacket) return;
-        
-        console.log('📍 Showing jacket in CENTER (no pose detected)');
-        
-        // Center position
-        this.jacket.position.set(0, 0, -2);
-        
-        // Forward rotation
-        this.jacket.rotation.set(0, Math.PI, 0);
-        
-        // Medium scale
-        this.jacket.scale.setScalar(1.8);
-        
-        // Make visible
-        this.jacket.visible = true;
-        
-        console.log('✅ Jacket positioned at center');
     }
 
     update(poseData) {
+        if (!poseData?.landmarks) return;
+
         const jacket = this.jacket || modelLoader.getModel();
         if (!jacket) return;
-
-        // Check if we have valid pose data
-        if (!poseData?.landmarks) {
-            this.noPoseFrames++;
-            
-            // After 10 frames of no pose, show in center
-            if (this.noPoseFrames > 10 && !this.hasValidPose) {
-                this.showInCenter();
-            }
-            return;
-        }
 
         const L = CONFIG.SKELETON.LANDMARKS;
         const lm = poseData.landmarks;
@@ -96,29 +49,18 @@ class SkeletonMapper {
         const LH = lm[L.LEFT_HIP];
         const RH = lm[L.RIGHT_HIP];
 
-        // Check if we have minimum required landmarks
-        if (!LS || !RS || !LH || !RH) {
-            this.noPoseFrames++;
-            if (this.noPoseFrames > 10 && !this.hasValidPose) {
-                this.showInCenter();
-            }
-            return;
-        }
+        if (!LS || !RS || !LH || !RH) return;
 
-        // ✅ We have valid pose!
-        this.hasValidPose = true;
-        this.noPoseFrames = 0;
-
-        // ---- Position (torso center, adjusted up for face visibility) ----
+        // ---- position (torso center, adjusted up for face visibility) ----
         const center = {
             x: (LS.x + RS.x + LH.x + RH.x) / 4,
-            y: (LS.y + RS.y) / 2,          // Use shoulder midpoint (higher)
+            y: (LS.y + RS.y) / 2,          // ✅ FIXED: Use shoulder midpoint (higher)
             z: (LS.z + RS.z + LH.z + RH.z) / 4
         };
 
         const aspect = this.width / this.height;
         const x = (center.x - 0.5) * aspect * 2;
-        const y = -(center.y - 0.45) * 2;  // Offset to show face
+        const y = -(center.y - 0.45) * 2;  // ✅ FIXED: Offset to show face
 
         const shoulderDist = Math.sqrt(
             (LS.x - RS.x) ** 2 +
@@ -126,15 +68,12 @@ class SkeletonMapper {
             (LS.z - RS.z) ** 2
         );
 
-        if (shoulderDist < 0.001) {
-            this.showInCenter();
-            return;
-        }
+        if (shoulderDist < 0.001) return;
 
-        // Adjust Z distance for proper viewing
+        // ✅ FIXED: Adjust Z distance for proper viewing (not too close, not too far)
         const z = -2.0 / shoulderDist;
 
-        // ---- Rotation ----
+        // ---- rotation ----
         const dx = RS.x - LS.x;
         const dy = RS.y - LS.y;
         const dz = RS.z - LS.z;
@@ -142,11 +81,11 @@ class SkeletonMapper {
         const yaw = Math.atan2(dz, dx);
         const roll = Math.atan2(dy, dx);
 
-        // ---- Scale (smaller range for proper fit) ----
+        // ---- scale (smaller range for proper fit) ----
         const rawScale = 1.5 / shoulderDist;
-        const scale = Utils.clamp(rawScale, 1.2, 2.5);
+        const scale = Utils.clamp(rawScale, 1.2, 2.5);  // ✅ FIXED: Much smaller range
 
-        // ---- Smoothing ----
+        // ---- smoothing ----
         this.smooth.pos = this.lerp3(this.smooth.pos, { x, y, z }, 0.25);
         this.smooth.rot = this.lerp3(
             this.smooth.rot,
@@ -169,7 +108,7 @@ class SkeletonMapper {
 
         jacket.scale.setScalar(this.smooth.scale);
         
-        // Force visibility
+        // ✅ Force visibility
         jacket.visible = true;
     }
     
@@ -179,18 +118,6 @@ class SkeletonMapper {
             x: Utils.lerp(start.x, end.x, t),
             y: Utils.lerp(start.y, end.y, t),
             z: Utils.lerp(start.z, end.z, t)
-        };
-    }
-    
-    /**
-     * Get current status
-     */
-    getStatus() {
-        return {
-            hasValidPose: this.hasValidPose,
-            noPoseFrames: this.noPoseFrames,
-            position: this.jacket ? this.jacket.position.toArray() : null,
-            visible: this.jacket ? this.jacket.visible : false
         };
     }
 }

@@ -1,180 +1,124 @@
-// Pose Tracker - ENHANCED with better detection reporting
+// pose-tracker.js - Handles MediaPipe Pose detection
+import { Pose } from '@mediapipe/pose';
+import { CONFIG } from './config.js';
 
-class PoseTracker {
+export class PoseTracker {
     constructor() {
         this.pose = null;
-        this.landmarks = null;
-        this.smoothedLandmarks = null;
-        this.callbacks = [];
         this.isInitialized = false;
-
-        this.lastProcessTime = 0;
-        this.processInterval = 1000 / 30;
-        this.isProcessing = false;
-        
-        // Detection tracking
+        this.lastPoseLandmarks = null;
+        this.onPoseDetected = null;
         this.detectionCount = 0;
-        this.lastDetectionLog = 0;
+        this.lastLogTime = Date.now();
+        
+        console.log('🎯 PoseTracker created');
     }
 
-    async init() {
-        const Pose = window.Pose;
-
-        this.pose = new Pose({
-            locateFile: file =>
-                `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-        });
-
-        this.pose.setOptions({
-            modelComplexity: 0,
-            smoothLandmarks: true,
-            enableSegmentation: false,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
-        });
-
-        this.pose.onResults(r => this.onResults(r));
-        this.isInitialized = true;
-        console.log("✅ PoseTracker ready");
-    }
-
-    async start(video) {
-        if (!video) {
-            console.error('❌ No video element provided to pose tracker');
-            return;
-        }
-        
-        console.log('🎯 Starting pose detection on video:', video.videoWidth, 'x', video.videoHeight);
-        
-        const loop = async () => {
-            const now = performance.now();
-            if (now - this.lastProcessTime < this.processInterval || this.isProcessing) {
-                requestAnimationFrame(loop);
-                return;
-            }
-
-            if (video.readyState >= 2) {
-                this.isProcessing = true;
-                this.lastProcessTime = now;
-                
-                try {
-                    await this.pose.send({ image: video });
-                } catch (error) {
-                    console.error('❌ Pose detection error:', error);
+    /**
+     * Initialize MediaPipe Pose
+     */
+    async initialize() {
+        try {
+            console.log('🎯 Initializing MediaPipe Pose...');
+            
+            this.pose = new Pose({
+                locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
                 }
-                
-                this.isProcessing = false;
-            }
+            });
 
-            requestAnimationFrame(loop);
-        };
-        loop();
+            this.pose.setOptions({
+                modelComplexity: CONFIG.POSE.MODEL_COMPLEXITY,
+                smoothLandmarks: CONFIG.POSE.SMOOTH_LANDMARKS,
+                minDetectionConfidence: CONFIG.POSE.MIN_DETECTION_CONFIDENCE,
+                minTrackingConfidence: CONFIG.POSE.MIN_TRACKING_CONFIDENCE,
+            });
+
+            this.pose.onResults((results) => this.handlePoseResults(results));
+            
+            this.isInitialized = true;
+            console.log('✅ MediaPipe Pose initialized');
+            
+            return true;
+        } catch (error) {
+            console.error('❌ Failed to initialize MediaPipe Pose:', error);
+            return false;
+        }
     }
 
-    onResults(results) {
-        if (!results.poseLandmarks) {
-            // ✅ Log when NO pose detected (but not too frequently)
-            const now = performance.now();
-            if (now - this.lastDetectionLog > 5000) {
-                console.log('⚠️ No pose detected in last 5 seconds');
-                this.lastDetectionLog = now;
-            }
-            
-            // Still notify callbacks with null data
-            this.callbacks.forEach(cb => cb({ landmarks: null }));
+    /**
+     * Process video frame for pose detection
+     */
+    async processFrame(videoElement) {
+        if (!this.isInitialized || !this.pose) {
+            console.warn('⚠️ Pose tracker not initialized');
             return;
         }
 
-        this.landmarks = results.poseLandmarks;
-        this.detectionCount++;
+        try {
+            await this.pose.send({ image: videoElement });
+        } catch (error) {
+            console.error('❌ Error processing pose frame:', error);
+        }
+    }
 
-        // ✅ Log successful detection (first time and every 100 frames)
-        if (this.detectionCount === 1 || this.detectionCount % 100 === 0) {
-            console.log(`✅ Pose detected! (count: ${this.detectionCount})`);
-            console.log('   Landmarks:', this.landmarks.length, 'points');
+    /**
+     * Handle pose detection results
+     */
+    handlePoseResults(results) {
+        const now = Date.now();
+        
+        if (results.poseLandmarks && results.poseLandmarks.length > 0) {
+            this.lastPoseLandmarks = results.poseLandmarks;
+            this.detectionCount++;
             
-            // Log key landmarks
-            const L = CONFIG.SKELETON.LANDMARKS;
-            const leftShoulder = this.landmarks[L.LEFT_SHOULDER];
-            const rightShoulder = this.landmarks[L.RIGHT_SHOULDER];
-            if (leftShoulder && rightShoulder) {
-                console.log('   Shoulders visible:', 
-                    `L(${leftShoulder.x.toFixed(2)}, ${leftShoulder.y.toFixed(2)})`,
-                    `R(${rightShoulder.x.toFixed(2)}, ${rightShoulder.y.toFixed(2)})`
-                );
+            // Log successful detection occasionally
+            if (this.detectionCount % 30 === 0) {
+                console.log(`✅ Pose detected! (${results.poseLandmarks.length} landmarks)`);
+            }
+            
+            if (this.onPoseDetected) {
+                this.onPoseDetected(results.poseLandmarks);
+            }
+        } else {
+            // Log when no pose is detected (every 5 seconds)
+            if (now - this.lastLogTime > 5000) {
+                console.log('⚠️ No pose detected in last 5 seconds');
+                this.lastLogTime = now;
+            }
+            
+            // Still call the callback with null to trigger center positioning
+            if (this.onPoseDetected) {
+                this.onPoseDetected(null);
             }
         }
-
-        if (!this.smoothedLandmarks) {
-            this.smoothedLandmarks = this.landmarks;
-        } else {
-            this.smoothedLandmarks = this.landmarks.map((lm, i) => ({
-                x: Utils.ema(lm.x, this.smoothedLandmarks[i].x, 0.6),
-                y: Utils.ema(lm.y, this.smoothedLandmarks[i].y, 0.6),
-                z: Utils.ema(lm.z, this.smoothedLandmarks[i].z, 0.6),
-                visibility: lm.visibility
-            }));
-        }
-
-        // Update status indicator
-        Utils.updateStatus('tracking', true);
-
-        this.callbacks.forEach(cb => cb({ landmarks: this.smoothedLandmarks }));
     }
 
-    // ---------- coordinate helpers ----------
-
-    toScreenSpace(lm) {
-        return {
-            x: lm.x * CONFIG.CAMERA.WIDTH,
-            y: lm.y * CONFIG.CAMERA.HEIGHT,
-            z: lm.z * CONFIG.CAMERA.WIDTH
-        };
+    /**
+     * Get the last detected pose landmarks
+     */
+    getLastPose() {
+        return this.lastPoseLandmarks;
     }
 
-    getLandmark(name) {
-        if (!this.smoothedLandmarks) return null;
-        const i = CONFIG.SKELETON.LANDMARKS[name];
-        return this.toScreenSpace(this.smoothedLandmarks[i]);
+    /**
+     * Check if pose tracker is ready
+     */
+    isReady() {
+        return this.isInitialized;
     }
 
-    getShoulderWidth() {
-        const l = this.getLandmark('LEFT_SHOULDER');
-        const r = this.getLandmark('RIGHT_SHOULDER');
-        if (!l || !r) return null;
-
-        const dx = l.x - r.x;
-        const dy = l.y - r.y;
-        const dz = l.z - r.z;
-        return Math.sqrt(dx*dx + dy*dy + dz*dz);
-    }
-
-    getBodyRotation() {
-        const l = this.getLandmark('LEFT_SHOULDER');
-        const r = this.getLandmark('RIGHT_SHOULDER');
-        if (!l || !r) return 0;
-
-        const dz = r.z - l.z;
-        const dx = r.x - l.x;
-        return Math.atan2(dz, dx);
-    }
-
-    onPoseUpdate(cb) {
-        this.callbacks.push(cb);
-    }
-
-    isPoseDetected() {
-        return !!this.smoothedLandmarks;
-    }
-    
+    /**
+     * Get detection count for debugging
+     */
     getDetectionCount() {
         return this.detectionCount;
     }
-    
-    stop() {
-        this.isProcessing = false;
-        console.log('⏹️ Pose tracker stopped');
+
+    /**
+     * Set callback for pose detection
+     */
+    setPoseCallback(callback) {
+        this.onPoseDetected = callback;
     }
 }
-
-const poseTracker = new PoseTracker();
