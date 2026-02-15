@@ -27,7 +27,8 @@ class SkeletonMapper {
         this.model.visible = true;
     }
 
- update(landmarks) {
+update(landmarks) {
+
     if (!this.model || !landmarks) {
         this.showInCenter();
         return;
@@ -43,40 +44,42 @@ class SkeletonMapper {
         return;
     }
 
-    /* ---------- POSITION (torso center in real 3D) ---------- */
+    /* ---------- TORSO CENTER ---------- */
 
     const cx = (LS.x + RS.x + LH.x + RH.x) / 4;
     const cy = (LS.y + RS.y) / 2;
 
-    const worldCenter = compositeRenderer.getWorldPositionFromScreen(cx, cy, 2.2);
+    /* ---------- CORRECT AR DEPTH ---------- */
+    // THIS is the real fix
+    const DEPTH = 3.8;   // was 2.2 → camera was inside jacket
 
-    this.smooth.position.lerp(worldCenter, 0.25);
+    const worldPos = compositeRenderer.getWorldPositionFromScreen(cx, cy, DEPTH);
+
+    this.smooth.position.lerp(worldPos, 0.25);
     this.model.position.copy(this.smooth.position);
 
-    /* ---------- SCALE (REAL body width, not pixels) ---------- */
+    /* ---------- SCALE ---------- */
 
-    const leftWorld  = compositeRenderer.getWorldPositionFromScreen(LS.x, LS.y, 2.2);
-    const rightWorld = compositeRenderer.getWorldPositionFromScreen(RS.x, RS.y, 2.2);
+    const shoulderDist = Math.sqrt(
+        (LS.x - RS.x) ** 2 +
+        (LS.y - RS.y) ** 2
+    );
 
-    const shoulderWorldDist = leftWorld.distanceTo(rightWorld);
-
-    let targetScale = shoulderWorldDist * 3.2;
-    targetScale = THREE.MathUtils.clamp(targetScale, 0.9, 3.0);
+    let targetScale = 1.6 / shoulderDist;
+    targetScale = THREE.MathUtils.clamp(targetScale, 1.2, 2.8);
 
     this.smooth.scale += (targetScale - this.smooth.scale) * 0.25;
     this.model.scale.setScalar(this.smooth.scale);
 
-    /* ---------- ROTATION (true body yaw) ---------- */
+    /* ---------- ROTATION ---------- */
 
-    const dx = rightWorld.x - leftWorld.x;
-    const dz = rightWorld.z - leftWorld.z;
+    const dx = RS.x - LS.x;
+    const dy = RS.y - LS.y;
+    const roll = Math.atan2(dy, dx);
 
-    const bodyYaw = Math.atan2(dz, dx);
-
-    this.model.rotation.set(0, -bodyYaw + Math.PI / 2, 0);
+    this.model.rotation.set(0, Math.PI, -roll * 0.7);
 
     this.model.visible = true;
 }
 }
-
 const skeletonMapper = new SkeletonMapper();
