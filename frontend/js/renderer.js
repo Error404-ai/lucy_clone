@@ -107,20 +107,22 @@ class CompositeRenderer {
 
     /* ================= SCREEN → WORLD ================= */
 
-    getWorldPositionFromScreen(nx, ny, depth = 2.2) {
-        const camera = sceneManager.getCamera();
+    getWorldPositionFromScreen(nx, ny, depth = CONFIG.SKELETON.DEPTH_OFFSET) {
 
-        // normalized device coords
-        const x = (nx - 0.5) * 2;
-        const y = -(ny - 0.5) * 2;
+    const camera = sceneManager.getCamera();
 
-        const vector = new THREE.Vector3(x, y, 0.5);
-        vector.unproject(camera);
+    const ndc = new THREE.Vector3(
+        (nx - 0.5) * 2,
+        -(ny - 0.5) * 2,
+        0.5
+    );
 
-        const dir = vector.sub(camera.position).normalize();
+    ndc.unproject(camera);
 
-        return camera.position.clone().add(dir.multiplyScalar(depth));
-    }
+    const dir = ndc.sub(camera.position).normalize();
+
+    return camera.position.clone().add(dir.multiplyScalar(depth));
+}
 
     /* ================= RENDER LOOP ================= */
 
