@@ -107,19 +107,20 @@ class ModelLoader {
             const isTooSmall = vertexCount < 1500;
 
             if (isHelperName || isTooSmall) {
-                console.log(🚫 Ignored mesh: ${child.name} (verts: ${vertexCount}));
+console.log(`🚫 Ignored mesh: ${child.name} (verts: ${vertexCount})`);
                 child.visible = false;
                 return;
             }
 
             // ✅ REAL CLOTHING
-            console.log(🧥 Clothing mesh accepted: ${child.name} (verts: ${vertexCount}));
+console.log(`🧥 Clothing mesh accepted: ${child.name} (verts: ${vertexCount})`);
 
             this.jacketMeshes.push(child);
             child.frustumCulled = false;
         });
 
-        console.log(🎯 Final clothing mesh count: ${this.jacketMeshes.length});
+      console.log(`🎯 Final clothing mesh count: ${this.jacketMeshes.length}`);
+
     }
 
     /* ================= GETTERS ================= */
