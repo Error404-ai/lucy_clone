@@ -19,11 +19,17 @@ class SkeletonMapper {
     setJacket(model) {
         this.model = model;
         console.log('🔗 Jacket linked to body tracker');
+        
+        // ✅ CRITICAL: Force jacket meshes to always render on top
+        const meshes = modelLoader.getMeshes();
+        meshes.forEach(mesh => {
+            mesh.renderOrder = 9999;  // WAY above video
+            mesh.frustumCulled = false;
+            mesh.material.depthTest = false;  // Don't check depth
+            mesh.material.side = THREE.DoubleSide;
+        });
     }
 
-    /**
-     * ✅ CRITICAL FIX: Proper body tracking with correct depth and scaling
-     */
     update(poseData) {
         if (!this.model) {
             console.warn('⚠️ No jacket model');
@@ -54,47 +60,57 @@ class SkeletonMapper {
 
         /* ================= POSITION ================= */
 
-        // Calculate torso center (average of shoulders and hips)
-        const centerX = (LS.x + RS.x + LH.x + RH.x) / 4;
-        const centerY = (LS.y + RS.y + LH.y + RH.y) / 4;
+        // Calculate torso center
+        const centerX = (LS.x + RS.x) / 2;  // Use shoulders only
+        const centerY = (LS.y + RS.y) / 2;
 
-        // Convert to world space with proper depth
-        const DEPTH = 2.5;  // Distance from camera
-        const worldPos = compositeRenderer.getWorldPositionFromScreen(
-            centerX, 
-            centerY, 
-            DEPTH
-        );
+        // ✅ ULTIMATE FIX: Put jacket DIRECTLY in front of camera
+        // Not in 3D space, but in screen space
+        const camera = sceneManager.getCamera();
+        const projectionScale = sceneManager.getProjectionScale();
+        
+        // Convert normalized screen coords to camera-relative position
+        const screenX = (centerX - 0.5) * 2;  // -1 to 1
+        const screenY = -(centerY - 0.5) * 2; // -1 to 1, flipped
+        
+        // Distance from camera (close enough to be visible)
+        const depth = 1.5;
+        
+        // Calculate world position relative to camera
+        const worldX = screenX * depth * projectionScale * camera.aspect;
+        const worldY = screenY * depth * projectionScale;
+        const worldZ = -depth;  // In front of camera
+        
+        const worldPos = new THREE.Vector3(worldX, worldY, worldZ);
 
         // Smooth position
-        this.smooth.position.lerp(worldPos, 0.3);
+        this.smooth.position.lerp(worldPos, 0.4);
         this.model.position.copy(this.smooth.position);
 
         /* ================= SCALE ================= */
 
-        // Calculate shoulder width (in normalized screen space)
+        // Calculate shoulder width
         const dx = RS.x - LS.x;
         const dy = RS.y - LS.y;
         const shoulderWidth = Math.sqrt(dx * dx + dy * dy);
 
-        // Convert shoulder width to proper 3D scale
-        // Magic number derived from testing with typical webcam FOV
-        const targetScale = shoulderWidth * 5.0;
-        const clampedScale = THREE.MathUtils.clamp(targetScale, 0.8, 2.5);
+        // Scale based on shoulder width and depth
+        const targetScale = shoulderWidth * depth * 4.0;
+        const clampedScale = THREE.MathUtils.clamp(targetScale, 0.5, 2.0);
 
         // Smooth scale
-        this.smooth.scale += (clampedScale - this.smooth.scale) * 0.3;
+        this.smooth.scale += (clampedScale - this.smooth.scale) * 0.4;
         this.model.scale.setScalar(this.smooth.scale);
 
         /* ================= ROTATION ================= */
 
-        // Calculate body roll (shoulder tilt)
+        // Calculate body roll
         const roll = Math.atan2(dy, dx);
 
         // Smooth rotation
-        this.smooth.rotation += (roll - this.smooth.rotation) * 0.3;
+        this.smooth.rotation += (roll - this.smooth.rotation) * 0.4;
 
-        // Apply rotation (Y faces camera, Z is roll)
+        // Apply rotation (face camera)
         this.model.rotation.set(
             0,
             Math.PI,  // Face camera
@@ -111,13 +127,11 @@ class SkeletonMapper {
             console.log(`   Position: (${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)}, ${worldPos.z.toFixed(2)})`);
             console.log(`   Scale: ${this.smooth.scale.toFixed(2)}`);
             console.log(`   Shoulder width: ${shoulderWidth.toFixed(3)}`);
+            console.log(`   🎯 JACKET SHOULD BE VISIBLE NOW`);
             this.hasShownJacket = true;
         }
     }
 
-    /**
-     * Reset tracking state
-     */
     reset() {
         this.smooth.position.set(0, 0, 0);
         this.smooth.scale = 1.0;
@@ -128,14 +142,11 @@ class SkeletonMapper {
         }
     }
 
-    /**
-     * Get current tracking quality
-     */
     getTrackingQuality() {
         if (!this.model || !this.model.visible) {
             return 0;
         }
-        return 1.0;  // Simplified - could add more sophisticated metrics
+        return 1.0;
     }
 }
 
