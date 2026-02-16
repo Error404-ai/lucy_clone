@@ -41,10 +41,10 @@ const CONFIG = {
 
     SKELETON: {
         SMOOTHING_FACTOR: 0.3,
-        BASE_SCALE: 1.0,
-        MIN_SCALE: 0.8,
-        MAX_SCALE: 2.5,
-        DEPTH_OFFSET: 2.5,  // Distance from camera
+        BASE_SCALE: 0.08,      // Smaller base scale for normal-sized jacket
+        MIN_SCALE: 0.03,       // Minimum scale
+        MAX_SCALE: 0.12,       // Maximum scale
+        DEPTH_OFFSET: 2.5,     // Distance from camera
 
         LANDMARKS: {
             LEFT_SHOULDER: 11,

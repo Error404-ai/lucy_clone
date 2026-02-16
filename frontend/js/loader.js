@@ -27,8 +27,9 @@ class ModelLoader {
                         return reject(new Error('No valid jacket mesh found'));
                     }
 
-                    // Initial setup
-                    this.jacketModel.scale.setScalar(0.01);  // Convert cm to meters
+                    // ✅ CRITICAL FIX: Don't set microscopic scale!
+                    // The GLB is already in correct units
+                    this.jacketModel.scale.setScalar(1.0);  // Normal size
                     this.jacketModel.position.set(0, 0, 0);
                     this.jacketModel.rotation.set(0, Math.PI, 0);
                     this.jacketModel.visible = false;  // Start hidden
