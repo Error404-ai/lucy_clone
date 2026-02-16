@@ -11,7 +11,7 @@ class SceneManager {
 
     init() {
         try {
-            console.log("Initializing AR Scene...");
+            console.log("🎬 Initializing AR Scene...");
 
             this.canvas = document.getElementById("main-canvas");
 
@@ -19,42 +19,41 @@ class SceneManager {
             this.scene = new THREE.Scene();
             this.scene.background = null;
 
-            // --- Webcam realistic perspective camera ---
+            // ✅ FIXED: Proper camera setup for full upper body
             const width = this.canvas.clientWidth || window.innerWidth;
             const height = this.canvas.clientHeight || window.innerHeight;
             const aspect = width / height;
 
-            const REAL_CAMERA_FOV = 60;
+            // Wider FOV to show full upper body (not just face)
+            const CAMERA_FOV = 75;
 
             this.camera = new THREE.PerspectiveCamera(
-                REAL_CAMERA_FOV,
+                CAMERA_FOV,
                 aspect,
-                0.1,        // safer near plane
+                0.1,
                 100
             );
 
-            // IMPORTANT: camera sits in front of user (not at origin)
-            this.camera.position.set(0, 0, 3);
-            this.camera.lookAt(0, 0, 0);
+            // Camera at origin (standard Three.js convention)
+            this.camera.position.set(0, 0, 0);
+            this.camera.lookAt(0, 0, -1);
 
-            // Projection scale for pose → 3D conversion
-            this.projectionScale = 2 * Math.tan((REAL_CAMERA_FOV * Math.PI / 180) / 2);
+            // Projection scale for converting normalized coords to world space
+            this.projectionScale = 2 * Math.tan((CAMERA_FOV * Math.PI / 180) / 2);
 
             // Renderer
             this.renderer = new THREE.WebGLRenderer({
                 canvas: this.canvas,
                 alpha: true,
                 antialias: true,
-                preserveDrawingBuffer: true
+                preserveDrawingBuffer: true,
+                powerPreference: "high-performance"
             });
 
             this.renderer.setSize(width, height);
-            this.renderer.setPixelRatio(window.devicePixelRatio);
+            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             this.renderer.setClearColor(0x000000, 0);
-
-            // VERY IMPORTANT FOR VIDEO + JACKET LAYERING
             this.renderer.sortObjects = true;
-
             this.renderer.outputColorSpace = THREE.SRGBColorSpace;
             this.renderer.toneMapping = THREE.NoToneMapping;
 
@@ -68,24 +67,26 @@ class SceneManager {
             console.log("✅ Scene initialized");
 
         } catch (err) {
-            console.error("Scene init failed:", err);
+            console.error("❌ Scene init failed:", err);
+            throw err;
         }
     }
 
     setupLights() {
-        const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+        // Bright ambient light
+        const ambient = new THREE.AmbientLight(0xffffff, 0.8);
         this.scene.add(ambient);
 
-        const dir = new THREE.DirectionalLight(0xffffff, 0.6);
-        dir.position.set(2, 3, 2);
+        // Directional light from above-front
+        const dir = new THREE.DirectionalLight(0xffffff, 0.5);
+        dir.position.set(0, 2, 1);
         this.scene.add(dir);
 
-        const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.3);
+        // Hemisphere light for natural fill
+        const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.4);
         hemi.position.set(0, 20, 0);
         this.scene.add(hemi);
     }
-
-    // ---------- COMPATIBILITY METHODS ----------
 
     add(object) {
         if (!this.scene) return;
@@ -113,8 +114,6 @@ class SceneManager {
         return this.projectionScale;
     }
 
-    // ---------- CAMERA SYNC WITH VIDEO ----------
-
     updateCamera(videoWidth, videoHeight) {
         if (!this.camera || !this.renderer) return;
 
@@ -122,8 +121,7 @@ class SceneManager {
         this.camera.aspect = videoWidth / videoHeight;
         this.camera.updateProjectionMatrix();
 
-       console.log(`Camera synced to video: ${videoWidth}x${videoHeight}`);
-
+        console.log(`📸 Camera synced: ${videoWidth}x${videoHeight}`);
     }
 
     onResize() {

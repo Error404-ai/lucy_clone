@@ -5,21 +5,21 @@ class MaterialsManager {
         this.defaultMaterial = null;
     }
 
-    /* ---------------- INIT ---------------- */
-
     init() {
+        // Create default material
         this.defaultMaterial = new THREE.MeshStandardMaterial({
             color: 0x1a1a1a,
-            roughness: 0.85,
-            metalness: 0.05,
+            roughness: 0.7,
+            metalness: 0.1,
             side: THREE.DoubleSide
         });
 
-        console.log('✅ Default material created');
+        console.log('✅ Materials manager initialized');
     }
 
-    /* ---------------- APPLY FABRIC ---------------- */
-
+    /**
+     * ✅ CRITICAL FIX: Apply fabric with proper rendering settings
+     */
     async applyFabric(fabricData) {
         try {
             console.log('🎨 Applying fabric:', fabricData.name);
@@ -36,111 +36,106 @@ class MaterialsManager {
                 return false;
             }
 
-            /* ---------- CREATE MATERIAL ---------- */
-
+            // Create material
             let newMaterial;
 
-            try {
-                if (fabricData.color) {
-                    const colorValue =
-                        typeof fabricData.color === 'string'
-                            ? fabricData.color
-                            : '#808080';
+            if (fabricData.color) {
+                const colorValue = typeof fabricData.color === 'string' 
+                    ? fabricData.color 
+                    : '#808080';
 
-                    newMaterial = new THREE.MeshStandardMaterial({
-                        color: colorValue,
-                        roughness: fabricData.roughness ?? 0.85,
-                        metalness: fabricData.metalness ?? 0.05,
-                        side: THREE.DoubleSide
-                    });
+                newMaterial = new THREE.MeshStandardMaterial({
+                    color: colorValue,
+                    roughness: fabricData.roughness ?? 0.7,
+                    metalness: fabricData.metalness ?? 0.1,
+                    side: THREE.DoubleSide,
+                    transparent: false,
+                    opacity: 1.0
+                });
 
-                    console.log('✅ Created fabric material:', colorValue);
-                } else {
-                    newMaterial = this.defaultMaterial.clone();
-                    console.log('✅ Using default material');
-                }
-            } catch (matError) {
-                console.error('❌ Material creation failed:', matError);
+                console.log('✅ Created material:', colorValue);
+            } else {
                 newMaterial = this.defaultMaterial.clone();
             }
 
-            /* ---------- APPLY TO MESHES ---------- */
-
+            // Apply to all jacket meshes
             let appliedCount = 0;
 
             for (const mesh of jacketMeshes) {
-                try {
-                    if (!mesh || !(mesh.isMesh || mesh.isSkinnedMesh)) continue;
+                if (!mesh || !(mesh.isMesh || mesh.isSkinnedMesh)) continue;
 
+                try {
                     const oldMaterial = mesh.material;
 
+                    // ✅ CRITICAL: Proper rendering settings
                     mesh.material = newMaterial.clone();
-
-                    /* ⭐⭐⭐ AR DEPTH FIX ⭐⭐⭐ */
-                    mesh.material.depthWrite = false;  // VERY IMPORTANT
+                    mesh.material.depthWrite = true;
                     mesh.material.depthTest = true;
                     mesh.material.transparent = false;
-                    mesh.material.opacity = 1.0;
                     mesh.material.side = THREE.DoubleSide;
-
-                    mesh.castShadow = false;
-                    mesh.receiveShadow = false;
-
-                    // Render AFTER video plane
-                    mesh.renderOrder = 10;
-
-                    mesh.frustumCulled = false;
                     mesh.material.needsUpdate = true;
 
+                    // Render after video background (-1000) but before other objects
+                    mesh.renderOrder = 100;
+
+                    mesh.castShadow = false;
+                    mesh.receiveShadow = true;
+                    mesh.frustumCulled = false;
+                    mesh.visible = true;  // ✅ CRITICAL: Make mesh visible
+
                     appliedCount++;
+                    console.log(`✅ Applied to mesh: "${mesh.name}"`);
 
-console.log(`✅ Applied to: "${mesh.name}"`);
-
+                    // Dispose old material
                     if (oldMaterial && oldMaterial !== this.defaultMaterial) {
-                        try { oldMaterial.dispose(); } catch {}
+                        try {
+                            oldMaterial.dispose();
+                        } catch (e) {}
                     }
 
                 } catch (meshError) {
-console.error(`❌ Failed on mesh ${mesh.name}:`, meshError);
+                    console.error(`❌ Failed on mesh "${mesh.name}":`, meshError);
                 }
             }
-
-            /* ---------- FINALIZE ---------- */
 
             if (appliedCount > 0) {
                 this.currentMaterial = newMaterial;
                 this.currentFabric = fabricData;
 
+                // Make model visible
                 modelLoader.setVisible(true);
 
-console.log(`✅ Fabric applied to ${appliedCount} mesh(es)`);
-                console.log('📊 Layering: Video(-1000) → Jacket(10)');
+                console.log(`✅ Fabric applied to ${appliedCount} mesh(es)`);
+                console.log('📊 Render order: Video(-1000) → Jacket(100)');
 
-                try { sceneManager.render(); } catch {}
+                // Force render
+                try {
+                    sceneManager.render();
+                } catch (e) {}
 
                 return true;
             }
 
-            console.error('❌ No meshes updated');
+            console.error('❌ No meshes were updated');
             return false;
 
         } catch (error) {
-            console.error('❌ CRITICAL ERROR in applyFabric:', error);
+            console.error('❌ Error applying fabric:', error);
+            console.error('Stack:', error.stack);
 
-            // Recovery
+            // Emergency recovery
             try {
                 const jacketMeshes = modelLoader.getMeshes();
-                jacketMeshes.forEach(mesh => {
+                for (const mesh of jacketMeshes) {
                     mesh.material = this.defaultMaterial.clone();
-                });
-                console.log('🔧 Emergency recovery applied');
-            } catch {}
+                    mesh.visible = true;
+                }
+                console.log('🔧 Applied default material as fallback');
+            } catch (e) {}
 
             return false;
         }
     }
-
-    /* ---------------- HELPERS ---------------- */
 
     getCurrentFabric() {
         return this.currentFabric;
@@ -149,12 +144,13 @@ console.log(`✅ Fabric applied to ${appliedCount} mesh(es)`);
     reset() {
         try {
             const jacketMeshes = modelLoader.getMeshes();
-            jacketMeshes.forEach(mesh => {
+            for (const mesh of jacketMeshes) {
                 mesh.material = this.defaultMaterial.clone();
-                mesh.renderOrder = 10;
-            });
-
-            console.log('✅ Materials reset');
+                mesh.material.needsUpdate = true;
+                mesh.renderOrder = 100;
+                mesh.visible = true;
+            }
+            console.log('✅ Materials reset to default');
         } catch (error) {
             console.error('❌ Reset failed:', error);
         }
@@ -167,6 +163,22 @@ console.log(`✅ Fabric applied to ${appliedCount} mesh(es)`);
         if (this.defaultMaterial) {
             this.defaultMaterial.dispose();
         }
+    }
+
+    /**
+     * Debug: Check material state
+     */
+    debugPrintMaterials() {
+        const jacketMeshes = modelLoader.getMeshes();
+        console.log('📋 Material Status:');
+        jacketMeshes.forEach(mesh => {
+            const mat = mesh.material;
+            console.log(`  ${mesh.name}:`);
+            console.log(`    Color: ${mat.color.getHexString()}`);
+            console.log(`    Visible: ${mesh.visible}`);
+            console.log(`    Render Order: ${mesh.renderOrder}`);
+            console.log(`    Depth Write: ${mat.depthWrite}`);
+        });
     }
 }
 

@@ -14,11 +14,9 @@ class CompositeRenderer {
         this.fpsHistorySize = 10;
     }
 
-    /* ================= INIT ================= */
-
     init(width, height) {
         try {
-            console.log('🎬 Initializing AR Renderer...');
+            console.log('🎬 Initializing Renderer...');
 
             this.width = width;
             this.height = height;
@@ -45,8 +43,6 @@ class CompositeRenderer {
         }
     }
 
-    /* ================= VIDEO BACKGROUND ================= */
-
     setupVideoBackground() {
         const video = cameraManager.video;
         if (!video) {
@@ -66,12 +62,10 @@ class CompositeRenderer {
     }
 
     /**
-     * ⭐ CRITICAL FIX
-     * Attach video to camera (NOT world)
-     * This makes video a background, not an object blocking 3D
+     * ✅ CRITICAL FIX: Video as full-screen background quad
      */
     createVideoTexture(video) {
-        console.log('🎥 Creating AR video background...');
+        console.log('🎥 Creating video background...');
 
         this.videoTexture = new THREE.VideoTexture(video);
         this.videoTexture.minFilter = THREE.LinearFilter;
@@ -79,52 +73,47 @@ class CompositeRenderer {
         this.videoTexture.format = THREE.RGBAFormat;
         this.videoTexture.colorSpace = THREE.SRGBColorSpace;
 
-        const camera = sceneManager.getCamera();
-
-        // Fullscreen quad (screen-space)
+        // Full-screen quad geometry (covers entire viewport)
         const geometry = new THREE.PlaneGeometry(2, 2);
 
         const material = new THREE.MeshBasicMaterial({
             map: this.videoTexture,
             depthWrite: false,
             depthTest: false,
-            toneMapped: false
+            toneMapped: false,
+            side: THREE.DoubleSide
         });
 
         this.videoPlane = new THREE.Mesh(geometry, material);
 
-        // Attach to camera instead of scene
-        this.videoPlane.position.set(0, 0, -1);
-        this.videoPlane.renderOrder = -9999;
+        // Position video plane behind everything
+        this.videoPlane.position.set(0, 0, -5);
+        this.videoPlane.renderOrder = -1000;
 
-        camera.add(this.videoPlane);
+        // Add to scene (not camera)
+        sceneManager.getScene().add(this.videoPlane);
 
-        // ensure camera is root scene object
-        sceneManager.getScene().add(camera);
-
-        console.log('✅ AR background attached to camera');
+        console.log('✅ Video background created');
     }
 
-    /* ================= SCREEN → WORLD ================= */
+    /**
+     * ✅ FIXED: Convert normalized screen coords to 3D world position
+     */
+    getWorldPositionFromScreen(nx, ny, depth = 2.5) {
+        const camera = sceneManager.getCamera();
+        const projectionScale = sceneManager.getProjectionScale();
 
-    getWorldPositionFromScreen(nx, ny, depth = CONFIG.SKELETON.DEPTH_OFFSET) {
+        // Convert normalized (0-1) to NDC (-1 to 1)
+        const ndcX = (nx - 0.5) * 2;
+        const ndcY = -(ny - 0.5) * 2;  // Flip Y
 
-    const camera = sceneManager.getCamera();
+        // Convert to world space
+        const worldX = ndcX * depth * projectionScale * camera.aspect;
+        const worldY = ndcY * depth * projectionScale;
+        const worldZ = -depth;
 
-    const ndc = new THREE.Vector3(
-        (nx - 0.5) * 2,
-        -(ny - 0.5) * 2,
-        0.5
-    );
-
-    ndc.unproject(camera);
-
-    const dir = ndc.sub(camera.position).normalize();
-
-    return camera.position.clone().add(dir.multiplyScalar(depth));
-}
-
-    /* ================= RENDER LOOP ================= */
+        return new THREE.Vector3(worldX, worldY, worldZ);
+    }
 
     start() {
         if (this.isRunning) return;
@@ -155,7 +144,7 @@ class CompositeRenderer {
             if (delta < targetDelta - 1) return;
             this.lastRenderTime = now;
 
-            // update webcam frame
+            // Update video texture
             if (this.videoTexture && cameraManager.video?.readyState >= 2) {
                 this.videoTexture.needsUpdate = true;
             }
@@ -167,8 +156,6 @@ class CompositeRenderer {
             console.error('❌ Render error:', error);
         }
     }
-
-    /* ================= CAPTURE ================= */
 
     captureFrame() {
         if (!this.canvas) return null;
@@ -186,8 +173,6 @@ class CompositeRenderer {
             return null;
         }
     }
-
-    /* ================= FPS ================= */
 
     updateFPS() {
         this.frameCount++;
@@ -213,8 +198,6 @@ class CompositeRenderer {
         }
     }
 
-    /* ================= RESIZE ================= */
-
     onResize() {
         const displayWidth = this.canvas.clientWidth || window.innerWidth;
         const displayHeight = this.canvas.clientHeight || window.innerHeight;
@@ -236,8 +219,6 @@ class CompositeRenderer {
     getFPS() {
         return this.fps;
     }
-
-    /* ================= CLEANUP ================= */
 
     dispose() {
         this.stop();

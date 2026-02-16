@@ -11,124 +11,147 @@ class ModelLoader {
         }
     }
 
-    /* ================= LOAD ================= */
-
     async loadJacket(modelPath = CONFIG.JACKET.MODEL_PATH) {
         return new Promise((resolve, reject) => {
-
-            console.log('📦 Loading jacket:', modelPath);
+            console.log('📦 Loading jacket model:', modelPath);
 
             this.loader.load(modelPath, (gltf) => {
+                try {
+                    this.jacketModel = gltf.scene;
 
-                this.jacketModel = gltf.scene;
+                    // Find actual clothing meshes (filter out helpers)
+                    this.findJacketMeshes(this.jacketModel);
 
-                this.findJacketMeshes(this.jacketModel);
-                if (this.jacketMeshes.length === 0)
-                    return reject('No valid clothing mesh found');
+                    if (this.jacketMeshes.length === 0) {
+                        console.error('❌ No valid jacket mesh found');
+                        return reject(new Error('No valid jacket mesh found'));
+                    }
 
-                // DO NOT normalize real-world meters
-this.jacketModel.scale.setScalar(0.01); // critical
-this.jacketModel.position.set(0,0,0);
-this.jacketModel.rotation.set(0,Math.PI,0);
-                this.jacketModel.rotation.set(0, Math.PI, 0);
+                    // Initial setup
+                    this.jacketModel.scale.setScalar(0.01);  // Convert cm to meters
+                    this.jacketModel.position.set(0, 0, 0);
+                    this.jacketModel.rotation.set(0, Math.PI, 0);
+                    this.jacketModel.visible = false;  // Start hidden
 
-                this.jacketModel.visible = false;
+                    // Add to scene
+                    sceneManager.add(this.jacketModel);
 
-                sceneManager.add(this.jacketModel);
-                skeletonMapper.setJacket(this.jacketModel);
+                    // Link to skeleton mapper
+                    skeletonMapper.setJacket(this.jacketModel);
 
-                this.isLoaded = true;
-                console.log('✅ Jacket ready for AR tracking');
+                    this.isLoaded = true;
+                    console.log(`✅ Jacket loaded with ${this.jacketMeshes.length} mesh(es)`);
 
-                resolve(this.jacketModel);
+                    resolve(this.jacketModel);
 
-            }, undefined, reject);
+                } catch (error) {
+                    console.error('❌ Error processing jacket:', error);
+                    reject(error);
+                }
+            }, undefined, (error) => {
+                console.error('❌ Failed to load jacket:', error);
+                reject(error);
+            });
         });
     }
 
-    /* ================= SIZE NORMALIZATION ================= */
-
-    normalizeModelSize() {
-        const box = new THREE.Box3().setFromObject(this.jacketModel);
-        const size = new THREE.Vector3();
-        box.getSize(size);
-
-        const TARGET_TORSO_HEIGHT = 1.6;
-        const scale = TARGET_TORSO_HEIGHT / size.y;
-
-        this.jacketModel.scale.setScalar(scale);
-
-        console.log('📏 Normalized torso height to 1.6m');
-    }
-
-    /* ================= PIVOT FIX ================= */
-
-    centerPivotToChest() {
-        const box = new THREE.Box3().setFromObject(this.jacketModel);
-        const center = new THREE.Vector3();
-        const size = new THREE.Vector3();
-
-        box.getCenter(center);
-        box.getSize(size);
-
-        const chestY = center.y - size.y * 0.25;
-
-        this.jacketModel.position.x -= center.x;
-        this.jacketModel.position.y -= chestY;
-        this.jacketModel.position.z -= center.z;
-
-        console.log('🎯 Pivot moved to chest');
-    }
-
-    /* ================= MESH FILTER (THE REAL FIX) ================= */
-
+    /**
+     * ✅ CRITICAL FIX: Intelligent mesh filtering to avoid helper geometry
+     */
     findJacketMeshes(object) {
         this.jacketMeshes = [];
 
         object.traverse(child => {
-
+            // Only process meshes
             if (!(child.isMesh || child.isSkinnedMesh)) return;
 
             const vertexCount = child.geometry?.attributes?.position?.count || 0;
             const name = child.name.toLowerCase();
 
-            // ❌ REMOVE helper geometry
-            const isHelperName =
-                name.includes('cube') ||
-                name.includes('plane') ||
-                name.includes('helper') ||
-                name.includes('mannequin') ||
-                name.includes('body') ||
-                name.includes('collider');
+            console.log(`🔍 Found mesh: "${child.name}" (${vertexCount} vertices)`);
 
-            // ❌ REMOVE tiny meshes (buttons / bounding box)
-            const isTooSmall = vertexCount < 1500;
+            // ❌ Filter out helper/collider meshes by name
+            const helperKeywords = [
+                'cube', 'plane', 'helper', 'mannequin', 'body',
+                'collider', 'bound', 'reference', 'guide', 'armature'
+            ];
 
-            if (isHelperName || isTooSmall) {
-console.log(`🚫 Ignored mesh: ${child.name} (verts: ${vertexCount})`);
+            const isHelper = helperKeywords.some(keyword => name.includes(keyword));
+
+            if (isHelper) {
+                console.log(`   ❌ Skipped: Helper geometry (name)`);
                 child.visible = false;
                 return;
             }
 
-            // ✅ REAL CLOTHING
-console.log(`🧥 Clothing mesh accepted: ${child.name} (verts: ${vertexCount})`);
+            // ❌ Filter out tiny meshes (buttons, zippers, < 2000 vertices)
+            if (vertexCount < 2000) {
+                console.log(`   ❌ Skipped: Too small (${vertexCount} < 2000 verts)`);
+                child.visible = false;
+                return;
+            }
+
+            // ❌ Filter out huge meshes (likely bounding boxes, > 100k vertices)
+            if (vertexCount > 100000) {
+                console.log(`   ❌ Skipped: Too large (${vertexCount} > 100k verts)`);
+                child.visible = false;
+                return;
+            }
+
+            // ✅ This is likely the actual jacket mesh
+            console.log(`   ✅ Accepted as jacket mesh`);
 
             this.jacketMeshes.push(child);
+
+            // Ensure proper rendering settings
             child.frustumCulled = false;
+            child.castShadow = false;
+            child.receiveShadow = false;
         });
 
-      console.log(`🎯 Final clothing mesh count: ${this.jacketMeshes.length}`);
+        console.log(`📊 Final jacket mesh count: ${this.jacketMeshes.length}`);
 
+        if (this.jacketMeshes.length === 0) {
+            console.error('❌ No valid jacket meshes found after filtering');
+        }
     }
 
-    /* ================= GETTERS ================= */
+    getModel() {
+        return this.jacketModel;
+    }
 
-    getModel() { return this.jacketModel; }
-    getMeshes() { return this.jacketMeshes; }
-    isModelLoaded() { return this.isLoaded; }
+    getMeshes() {
+        return this.jacketMeshes;
+    }
 
-    setVisible(v){
-        if(this.jacketModel) this.jacketModel.visible = v;
+    isModelLoaded() {
+        return this.isLoaded;
+    }
+
+    setVisible(visible) {
+        if (this.jacketModel) {
+            this.jacketModel.visible = visible;
+        }
+    }
+
+    /**
+     * Debug: Print mesh hierarchy
+     */
+    debugPrintHierarchy() {
+        if (!this.jacketModel) {
+            console.log('No model loaded');
+            return;
+        }
+
+        console.log('📋 Model Hierarchy:');
+        this.jacketModel.traverse(child => {
+            const indent = '  '.repeat(child.parent ? 1 : 0);
+            const type = child.isMesh ? 'Mesh' : 
+                        child.isSkinnedMesh ? 'SkinnedMesh' :
+                        child.isBone ? 'Bone' : 'Object3D';
+            const verts = child.geometry?.attributes?.position?.count || 0;
+            console.log(`${indent}${type}: ${child.name} (${verts} verts)`);
+        });
     }
 }
 
