@@ -6,77 +6,74 @@ class LucyApp {
         this.isRunning = false;
     }
 
-    async init() {
-        try {
-            console.log('🎭 Starting Lucy Virtual Try-On...');
-            console.log('🔴 EMERGENCY MODE - Extra logging enabled');
-            
-            // Check browser support
-            Utils.checkBrowserSupport();
-            
-            // Step 1: Initialize camera
-            Utils.updateLoadingText('Initializing camera...');
-            const { width, height } = await cameraManager.init();
-            console.log(`✓ Camera ready: ${width}x${height}`);
-            
-            // Step 2: Initialize MediaPipe Pose
-            Utils.updateLoadingText('Loading pose tracking...');
-            await poseTracker.init();
-            console.log('✓ Pose tracking ready');
-            
-            // Step 3: Initialize Three.js scene
-            Utils.updateLoadingText('Setting up 3D scene...');
-            sceneManager.init();
-            sceneManager.updateCamera(width, height);
-            console.log('✓ Scene ready');
-            
-            // Step 4: Initialize materials manager FIRST
-            Utils.updateLoadingText('Initializing materials...');
-            materialsManager.init();
-            console.log('✓ Materials manager ready');
-            
-            // Step 5: Load jacket model
-            Utils.updateLoadingText('Loading jacket model...');
-            await modelLoader.loadJacket();
-            console.log('✓ Jacket model loaded');
-            
-            // Step 6: Initialize renderer
-            Utils.updateLoadingText('Initializing renderer...');
-            compositeRenderer.init(width, height);
-            console.log('✓ Renderer ready');
-            
-            // Step 7: Initialize skeleton mapper
-            Utils.updateLoadingText('Setting up body tracking...');
-            skeletonMapper.init(width, height);
-            console.log('✓ Skeleton mapper ready');
-            
-            // Step 8: Initialize fabric selector
-            Utils.updateLoadingText('Loading fabrics...');
-            await fabricSelector.init();
-            console.log('✓ Fabric selector ready');
-            
-            // Step 9: Initialize capture manager
-            captureManager.init();
-            console.log('✓ Capture manager ready');
-            
-            // Step 10: Initialize AI pipeline (optional)
-            Utils.updateLoadingText('Connecting to AI server...');
-            await aiPipeline.init();
-            console.log('✓ AI pipeline ready');
-            
-            this.isInitialized = true;
-            console.log('✅ All systems initialized!');
-            
-            // Start the application
-            await this.start();
-            
-        } catch (error) {
-            console.error('❌ Initialization failed:', error);
-            console.error('Stack:', error.stack);
-            Utils.showError(error.message || 'Initialization failed');
-            throw error;
-        }
+ async init() {
+    try {
+        console.log('🎭 Starting Lucy Virtual Try-On...');
+        
+        Utils.checkBrowserSupport();
+        
+        // Step 1: Initialize camera FIRST
+        Utils.updateLoadingText('Initializing camera...');
+        const { width, height } = await cameraManager.init();
+        console.log(`✓ Camera ready: ${width}x${height}`);
+        
+        // Step 2: Initialize MediaPipe Pose
+        Utils.updateLoadingText('Loading pose tracking...');
+        await poseTracker.init();
+        console.log('✓ Pose tracking ready');
+        
+        // Step 3: Initialize Three.js scene
+        Utils.updateLoadingText('Setting up 3D scene...');
+        sceneManager.init();
+        sceneManager.updateCamera(width, height);
+        console.log('✓ Scene ready');
+        
+        // Step 4: Initialize materials manager
+        Utils.updateLoadingText('Initializing materials...');
+        materialsManager.init();
+        console.log('✓ Materials manager ready');
+        
+        // Step 5: Load jacket model
+        Utils.updateLoadingText('Loading jacket model...');
+        await modelLoader.loadJacket();
+        console.log('✓ Jacket model loaded');
+        
+        // Step 6: Initialize renderer
+        Utils.updateLoadingText('Initializing renderer...');
+        compositeRenderer.init(width, height);
+        console.log('✓ Renderer ready');
+        
+        // Step 7: Initialize skeleton mapper WITH video dimensions ✅ FIX
+        Utils.updateLoadingText('Setting up body tracking...');
+        await skeletonMapper.init(width, height); // ✅ Pass dimensions
+        console.log('✓ Skeleton mapper ready');
+        
+        // Step 8: Initialize fabric selector
+        Utils.updateLoadingText('Loading fabrics...');
+        await fabricSelector.init();
+        console.log('✓ Fabric selector ready');
+        
+        // Step 9: Initialize capture manager
+        captureManager.init();
+        console.log('✓ Capture manager ready');
+        
+        // Step 10: Initialize AI pipeline (optional)
+        Utils.updateLoadingText('Connecting to AI server...');
+        await aiPipeline.init();
+        console.log('✓ AI pipeline ready');
+        
+        this.isInitialized = true;
+        console.log('✅ All systems initialized!');
+        
+        await this.start();
+        
+    } catch (error) {
+        console.error('❌ Initialization failed:', error);
+        console.error('Stack:', error.stack);
+        Utils.showError(error.message || 'Initialization failed');
+        throw error;
     }
+}
 
    async start() {
     if (!this.isInitialized) {

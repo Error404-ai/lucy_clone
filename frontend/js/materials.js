@@ -1,125 +1,154 @@
+// Materials Manager - FIXED with proper depth testing
+
 class MaterialsManager {
     constructor() {
-        this.currentMaterial = null;
+        this.materials = new Map();
+        this.textures = new Map();
         this.currentFabric = null;
-        this.defaultMaterial = null;
+        this.isInitialized = false;
     }
 
     init() {
-        // Create default material with NO depth testing
-        this.defaultMaterial = new THREE.MeshStandardMaterial({
-            color: 0x1a1a1a,
-            roughness: 0.7,
-            metalness: 0.1,
-            side: THREE.DoubleSide,
-            depthTest: false,  // ✅ CRITICAL
-            depthWrite: false, // ✅ CRITICAL
-            transparent: false,
-            opacity: 1.0
-        });
-
-        console.log('✅ Materials manager initialized (NO DEPTH TEST)');
+        console.log('🎨 Initializing Materials Manager...');
+        
+        // Create default material
+        this.createDefaultMaterial();
+        
+        this.isInitialized = true;
+        console.log('✅ Materials Manager ready');
     }
 
-    async applyFabric(fabricData) {
-        try {
-            console.log('🎨 Applying fabric:', fabricData.name);
+    createDefaultMaterial() {
+        const material = new THREE.MeshStandardMaterial({
+            color: 0x2563EB,  // Blue denim color
+            metalness: 0.1,
+            roughness: 0.8,
+            
+            // ✅ CRITICAL: Proper depth settings
+            depthTest: true,
+            depthWrite: true,
+            transparent: false,
+            opacity: 1.0,
+            side: THREE.DoubleSide,
+            
+            // Rendering
+            flatShading: false,
+            wireframe: false,
+            fog: false
+        });
+        
+        this.materials.set('default', material);
+        console.log('✅ Default material created (Blue Denim)');
+        
+        return material;
+    }
 
-            const model = modelLoader.getModel();
-            if (!model) {
-                console.error('❌ Model not loaded');
-                return false;
+    applyFabricToModel(model, fabricData) {
+        if (!model) {
+            console.warn('⚠️ No model provided');
+            return;
+        }
+
+        console.log('🎨 Applying fabric:', fabricData?.name || 'default');
+
+        model.traverse((child) => {
+            if (!child.isMesh) return;
+            
+            // Skip helper meshes
+            if (child.name.toLowerCase().includes('cube') || 
+                child.name.toLowerCase().includes('helper')) {
+                child.visible = false;
+                return;
             }
 
-            const jacketMeshes = modelLoader.getMeshes();
-            if (!jacketMeshes || jacketMeshes.length === 0) {
-                console.error('❌ No jacket meshes found');
-                return false;
-            }
+            // Apply material
+            const material = this.getMaterialForFabric(fabricData);
+            child.material = material;
+            
+            // ✅ CRITICAL: Force proper rendering settings
+            child.material.depthTest = true;
+            child.material.depthWrite = true;
+            child.material.transparent = false;
+            child.material.opacity = 1.0;
+            child.material.needsUpdate = true;
+            
+            // Rendering order
+            child.renderOrder = 10;  // Render after video (-1000) but before UI (100+)
+            child.frustumCulled = false;
+            
+            console.log(`   Applied to: ${child.name}`);
+        });
 
-            // Create material
-            const colorValue = typeof fabricData.color === 'string' 
-                ? fabricData.color 
-                : '#808080';
+        this.currentFabric = fabricData;
+        console.log('✅ Fabric applied successfully');
+    }
+    applyFabric(fabricData) {
+    const jacket = skeletonMapper.model;
+    if (!jacket) {
+        console.warn('⚠️ No jacket model to apply fabric to');
+        return;
+    }
+    
+    this.applyFabricToModel(jacket, fabricData);
+}
 
-            const newMaterial = new THREE.MeshStandardMaterial({
-                color: colorValue,
-                roughness: fabricData.roughness ?? 0.7,
-                metalness: fabricData.metalness ?? 0.1,
-                side: THREE.DoubleSide,
-                
-                // ✅ ULTIMATE FIX: Remove ALL depth testing
-                depthTest: false,   // Don't check if behind other objects
-                depthWrite: false,  // Don't write to depth buffer
-                transparent: false,
-                opacity: 1.0
-            });
+    getMaterialForFabric(fabricData) {
+        if (!fabricData) {
+            return this.materials.get('default');
+        }
 
-            console.log('✅ Created NO-DEPTH material:', colorValue);
+        // Check if material already exists
+        if (this.materials.has(fabricData.id)) {
+            return this.materials.get(fabricData.id);
+        }
 
-            // Apply to all jacket meshes
-            let appliedCount = 0;
+        // Create new material
+        const material = new THREE.MeshStandardMaterial({
+            color: fabricData.color || 0x2563EB,
+            metalness: fabricData.metalness || 0.1,
+            roughness: fabricData.roughness || 0.8,
+            
+            // ✅ CRITICAL: Proper depth settings
+            depthTest: true,
+            depthWrite: true,
+            transparent: false,
+            opacity: 1.0,
+            side: THREE.DoubleSide
+        });
 
-            for (const mesh of jacketMeshes) {
-                if (!mesh || !(mesh.isMesh || mesh.isSkinnedMesh)) continue;
-
-                try {
-                    const oldMaterial = mesh.material;
-
-                    mesh.material = newMaterial.clone();
-                    
-                    // ✅ FORCE rendering on top of everything
-                    mesh.renderOrder = 9999;
-                    mesh.frustumCulled = false;
-                    mesh.visible = true;
-                    mesh.castShadow = false;
-                    mesh.receiveShadow = false;
-                    
-                    // Double-check material settings
-                    mesh.material.depthTest = false;
-                    mesh.material.depthWrite = false;
-                    mesh.material.side = THREE.DoubleSide;
-                    mesh.material.needsUpdate = true;
-
-                    appliedCount++;
-                    console.log(`✅ Applied NO-DEPTH material to: "${mesh.name}"`);
-
-                    // Dispose old material
-                    if (oldMaterial && oldMaterial !== this.defaultMaterial) {
-                        try {
-                            oldMaterial.dispose();
-                        } catch (e) {}
-                    }
-
-                } catch (meshError) {
-                    console.error(`❌ Failed on mesh "${mesh.name}":`, meshError);
+        // Load texture if available
+        if (fabricData.textureUrl) {
+            const texture = new THREE.TextureLoader().load(
+                fabricData.textureUrl,
+                (tex) => {
+                    tex.wrapS = THREE.RepeatWrapping;
+                    tex.wrapT = THREE.RepeatWrapping;
+                    tex.repeat.set(2, 2);
+                    tex.colorSpace = THREE.SRGBColorSpace;
+                    material.map = tex;
+                    material.needsUpdate = true;
+                    console.log('✅ Texture loaded:', fabricData.name);
+                },
+                undefined,
+                (err) => {
+                    console.warn('⚠️ Texture load failed:', err);
                 }
-            }
+            );
+            
+            this.textures.set(fabricData.id, texture);
+        }
 
-            if (appliedCount > 0) {
-                this.currentMaterial = newMaterial;
-                this.currentFabric = fabricData;
+        this.materials.set(fabricData.id, material);
+        return material;
+    }
 
-                // Make model visible
-                modelLoader.setVisible(true);
+    updateMaterialColor(color) {
+        if (!this.currentFabric) return;
 
-                console.log(`✅ Fabric applied to ${appliedCount} mesh(es)`);
-                console.log('📊 Render order: Video(-1000) → Jacket(9999 NO DEPTH)');
-
-                // Force render
-                try {
-                    sceneManager.render();
-                } catch (e) {}
-
-                return true;
-            }
-
-            console.error('❌ No meshes were updated');
-            return false;
-
-        } catch (error) {
-            console.error('❌ Error applying fabric:', error);
-            return false;
+        const material = this.materials.get(this.currentFabric.id);
+        if (material) {
+            material.color.setHex(color);
+            material.needsUpdate = true;
         }
     }
 
@@ -127,28 +156,20 @@ class MaterialsManager {
         return this.currentFabric;
     }
 
-    reset() {
-        try {
-            const jacketMeshes = modelLoader.getMeshes();
-            for (const mesh of jacketMeshes) {
-                mesh.material = this.defaultMaterial.clone();
-                mesh.material.needsUpdate = true;
-                mesh.renderOrder = 9999;
-                mesh.visible = true;
-            }
-            console.log('✅ Materials reset to default');
-        } catch (error) {
-            console.error('❌ Reset failed:', error);
-        }
-    }
-
     dispose() {
-        if (this.currentMaterial && this.currentMaterial !== this.defaultMaterial) {
-            this.currentMaterial.dispose();
-        }
-        if (this.defaultMaterial) {
-            this.defaultMaterial.dispose();
-        }
+        // Dispose all materials
+        this.materials.forEach(material => {
+            material.dispose();
+        });
+        this.materials.clear();
+
+        // Dispose all textures
+        this.textures.forEach(texture => {
+            texture.dispose();
+        });
+        this.textures.clear();
+
+        console.log('🗑️ Materials disposed');
     }
 }
 
