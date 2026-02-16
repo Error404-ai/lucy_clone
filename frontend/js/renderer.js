@@ -1,4 +1,4 @@
-// Composite Renderer - FIXED with proper fullscreen video background
+// Composite Renderer - FIXED with proper aspect ratio handling
 
 class CompositeRenderer {
     constructor() {
@@ -74,10 +74,10 @@ class CompositeRenderer {
     }
 
     /**
-     * ✅ CRITICAL FIX: Fullscreen video background using proper camera-space plane
+     * ✅ CRITICAL FIX: Aspect-ratio-aware fullscreen video background
      */
     createVideoTexture(video) {
-        console.log('🎥 Creating video background...');
+        console.log('🎥 Creating video background with proper aspect ratio...');
 
         // Create video texture
         this.videoTexture = new THREE.VideoTexture(video);
@@ -89,15 +89,33 @@ class CompositeRenderer {
         const camera = sceneManager.getCamera();
         const scene = sceneManager.getScene();
 
-        // Calculate the plane size needed to fill the camera's view at a given distance
-        const distance = 10; // Distance from camera
-        const vFOV = camera.fov * Math.PI / 180; // Convert to radians
-        const planeHeight = 2 * Math.tan(vFOV / 2) * distance;
-        const planeWidth = planeHeight * camera.aspect;
+        // Get video and camera aspect ratios
+        const videoAspect = video.videoWidth / video.videoHeight;
+        const cameraAspect = camera.aspect;
+
+        console.log(`📹 Video aspect: ${videoAspect.toFixed(2)} (${video.videoWidth}x${video.videoHeight})`);
+        console.log(`📷 Camera aspect: ${cameraAspect.toFixed(2)}`);
+
+        // Calculate plane size to COVER the screen (like CSS background-size: cover)
+        const distance = 10;
+        const vFOV = camera.fov * Math.PI / 180;
+        
+        let planeHeight, planeWidth;
+
+        if (videoAspect > cameraAspect) {
+            // Video is wider than screen - fit to height, let width overflow
+            planeHeight = 2 * Math.tan(vFOV / 2) * distance;
+            planeWidth = planeHeight * videoAspect;
+        } else {
+            // Video is narrower than screen - fit to width, let height overflow
+            const basePlaneHeight = 2 * Math.tan(vFOV / 2) * distance;
+            planeWidth = basePlaneHeight * cameraAspect;
+            planeHeight = planeWidth / videoAspect;
+        }
 
         console.log(`📐 Video plane: ${planeWidth.toFixed(2)} x ${planeHeight.toFixed(2)} at distance ${distance}`);
 
-        // Create geometry that fills the entire view
+        // Create geometry that covers the entire view
         const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
 
         const material = new THREE.MeshBasicMaterial({
@@ -117,7 +135,7 @@ class CompositeRenderer {
         // Add to scene
         scene.add(this.videoPlane);
 
-        console.log('✅ Video background created and added to scene');
+        console.log('✅ Video background created with proper aspect ratio');
     }
 
     /**
@@ -126,11 +144,26 @@ class CompositeRenderer {
     updateVideoPlaneSize() {
         if (!this.videoPlane) return;
 
+        const video = cameraManager.video;
+        if (!video || video.videoWidth === 0) return;
+
         const camera = sceneManager.getCamera();
+        const videoAspect = video.videoWidth / video.videoHeight;
+        const cameraAspect = camera.aspect;
+
         const distance = 10;
         const vFOV = camera.fov * Math.PI / 180;
-        const planeHeight = 2 * Math.tan(vFOV / 2) * distance;
-        const planeWidth = planeHeight * camera.aspect;
+        
+        let planeHeight, planeWidth;
+
+        if (videoAspect > cameraAspect) {
+            planeHeight = 2 * Math.tan(vFOV / 2) * distance;
+            planeWidth = planeHeight * videoAspect;
+        } else {
+            const basePlaneHeight = 2 * Math.tan(vFOV / 2) * distance;
+            planeWidth = basePlaneHeight * cameraAspect;
+            planeHeight = planeWidth / videoAspect;
+        }
 
         // Update geometry
         this.videoPlane.geometry.dispose();
@@ -275,7 +308,7 @@ class CompositeRenderer {
         // Update video plane to match new aspect ratio
         this.updateVideoPlaneSize();
         
-        console.log(`📐 Resized: ${displayWidth}x${displayHeight}`);
+        console.log(`📐 Resized: ${displayWidth}x${displayHeight}, aspect: ${(displayWidth/displayHeight).toFixed(2)}`);
     }
 
     getFPS() {
