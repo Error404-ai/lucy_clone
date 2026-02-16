@@ -62,20 +62,10 @@ worldPos.add(viewDir.multiplyScalar(0.45));
     this.smooth.position.lerp(worldPos, 0.25);
     this.model.position.copy(this.smooth.position);
 
-    /* ---------- SCALE ---------- */
-
- const shoulderDist = Math.sqrt(dx*dx + dy*dy);
-
-// Convert screen ratio → world scale
-const scale = shoulderDist * 6.5;   // MAGIC AR constant
-
-jacket.scale.setScalar(scale);
-
-    let targetScale = 1.6 / shoulderDist;
-    targetScale = THREE.MathUtils.clamp(targetScale, 1.2, 2.8);
-
-    this.smooth.scale += (targetScale - this.smooth.scale) * 0.25;
-    this.model.scale.setScalar(this.smooth.scale);
+    const cam = sceneManager.getCamera();
+const forward = new THREE.Vector3();
+cam.getWorldDirection(forward);
+this.model.position.add(forward.multiplyScalar(-0.25));
 
     /* ---------- ROTATION ---------- */
 
@@ -84,11 +74,7 @@ jacket.scale.setScalar(scale);
     const roll = Math.atan2(dy, dx);
 
     // face camera correctly (human chest forward)
-this.model.rotation.set(
-    0,
-    Math.PI + Math.PI/2,
-    bodyRoll
-);
+this.model.rotation.set(0, Math.PI + Math.PI/2, -angle * 0.6);
 
     this.model.visible = true;
 }
