@@ -1,4 +1,4 @@
-// Main application entry point - EMERGENCY FIX
+// Main application entry point - FIXED VERSION
 
 class LucyApp {
     constructor() {
@@ -9,7 +9,6 @@ class LucyApp {
     async init() {
         try {
             console.log('🎭 Starting Lucy Virtual Try-On...');
-            console.log('🔴 EMERGENCY MODE - Extra logging enabled');
             
             // Check browser support
             Utils.checkBrowserSupport();
@@ -78,42 +77,64 @@ class LucyApp {
         }
     }
 
-   async start() {
-    if (!this.isInitialized) {
-        throw new Error('App not initialized');
-    }
-
-    try {
-        console.log('Starting application...');
-
-        // IMPORTANT: get real video element
-       const video = document.getElementById("camera-video");
-await poseTracker.start(video);
-
-        // Start pose tracking with video
-        await poseTracker.start(video);
-
-        poseTracker.onPoseUpdate((poseData) => {
-            this.onPoseUpdate(poseData);
-        });
-
-        compositeRenderer.start();
-
-        if (aiPipeline.isActive()) {
-            aiPipeline.start();
+    async start() {
+        if (!this.isInitialized) {
+            throw new Error('App not initialized');
         }
 
-        Utils.hideLoadingScreen();
-        this.showPoseGuide();
+        try {
+            console.log('🚀 Starting application...');
 
-        this.isRunning = true;
-        console.log('✅ Application running!');
+            // Get video element from camera manager
+            const video = cameraManager.video;
+            
+            if (!video) {
+                throw new Error('Camera video element not found');
+            }
 
-    } catch (error) {
-        console.error('Failed to start application:', error);
-        throw error;
+            // Wait for video to be ready
+            let attempts = 0;
+            while (video.readyState < 2 && attempts < 50) {
+                await Utils.wait(100);
+                attempts++;
+            }
+
+            console.log('📹 Video element ready:', video.videoWidth, 'x', video.videoHeight);
+            console.log('📹 Video readyState:', video.readyState);
+
+            // Set up pose update callback BEFORE starting
+            poseTracker.onPoseUpdate((poseData) => {
+                this.onPoseUpdate(poseData);
+            });
+
+            // Start pose tracking with video
+            console.log('🎯 Starting pose detection...');
+            await poseTracker.start(video);
+            console.log('✅ Pose tracking started');
+
+            // Start renderer
+            compositeRenderer.start();
+            console.log('✅ Renderer started');
+
+            // Start AI pipeline if available
+            if (aiPipeline.isActive()) {
+                aiPipeline.start();
+                console.log('✅ AI pipeline started');
+            }
+
+            // Hide loading and show guide
+            Utils.hideLoadingScreen();
+            this.showPoseGuide();
+
+            this.isRunning = true;
+            console.log('✅ Application running! Stand in front of camera to see jacket.');
+
+        } catch (error) {
+            console.error('❌ Failed to start application:', error);
+            console.error('Stack:', error.stack);
+            throw error;
+        }
     }
-}
 
     onPoseUpdate(poseData) {
         // Update skeleton mapper with new pose data
