@@ -76,60 +76,67 @@ class CompositeRenderer {
     /**
      * ✅ CRITICAL FIX: Aspect-ratio-aware fullscreen video background
      */
-  createVideoTexture(video) {
-    console.log('🎥 Creating video background with proper aspect ratio...');
+    createVideoTexture(video) {
+        console.log('🎥 Creating video background with proper aspect ratio...');
 
-    // Create video texture with CORRECT color space
-    this.videoTexture = new THREE.VideoTexture(video);
-    this.videoTexture.minFilter = THREE.LinearFilter;
-    this.videoTexture.magFilter = THREE.LinearFilter;
-    this.videoTexture.format = THREE.RGBAFormat;
-    this.videoTexture.colorSpace = THREE.SRGBColorSpace; // ✅ CRITICAL
-    this.videoTexture.needsUpdate = true; // ✅ Force initial update
+        // Create video texture
+        this.videoTexture = new THREE.VideoTexture(video);
+        this.videoTexture.minFilter = THREE.LinearFilter;
+        this.videoTexture.magFilter = THREE.LinearFilter;
+        this.videoTexture.format = THREE.RGBAFormat;
+        this.videoTexture.colorSpace = THREE.SRGBColorSpace;
 
-    const camera = sceneManager.getCamera();
-    const scene = sceneManager.getScene();
+        const camera = sceneManager.getCamera();
+        const scene = sceneManager.getScene();
 
-    // Get aspect ratios
-    const videoAspect = video.videoWidth / video.videoHeight;
-    const cameraAspect = camera.aspect;
+        // Get video and camera aspect ratios
+        const videoAspect = video.videoWidth / video.videoHeight;
+        const cameraAspect = camera.aspect;
 
-    console.log(`📹 Video: ${videoAspect.toFixed(2)} (${video.videoWidth}x${video.videoHeight})`);
-    console.log(`📷 Camera: ${cameraAspect.toFixed(2)}`);
+        console.log(`📹 Video aspect: ${videoAspect.toFixed(2)} (${video.videoWidth}x${video.videoHeight})`);
+        console.log(`📷 Camera aspect: ${cameraAspect.toFixed(2)}`);
 
-    // Calculate plane size to COVER the screen
-    const distance = 10;
-    const vFOV = camera.fov * Math.PI / 180;
-    
-    let planeHeight, planeWidth;
+        // Calculate plane size to COVER the screen (like CSS background-size: cover)
+        const distance = 10;
+        const vFOV = camera.fov * Math.PI / 180;
+        
+        let planeHeight, planeWidth;
 
-    if (videoAspect > cameraAspect) {
-        planeHeight = 2 * Math.tan(vFOV / 2) * distance;
-        planeWidth = planeHeight * videoAspect;
-    } else {
-        const basePlaneHeight = 2 * Math.tan(vFOV / 2) * distance;
-        planeWidth = basePlaneHeight * cameraAspect;
-        planeHeight = planeWidth / videoAspect;
+        if (videoAspect > cameraAspect) {
+            // Video is wider than screen - fit to height, let width overflow
+            planeHeight = 2 * Math.tan(vFOV / 2) * distance;
+            planeWidth = planeHeight * videoAspect;
+        } else {
+            // Video is narrower than screen - fit to width, let height overflow
+            const basePlaneHeight = 2 * Math.tan(vFOV / 2) * distance;
+            planeWidth = basePlaneHeight * cameraAspect;
+            planeHeight = planeWidth / videoAspect;
+        }
+
+        console.log(`📐 Video plane: ${planeWidth.toFixed(2)} x ${planeHeight.toFixed(2)} at distance ${distance}`);
+
+        // Create geometry that covers the entire view
+        const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
+
+        const material = new THREE.MeshBasicMaterial({
+            map: this.videoTexture,
+            depthWrite: false,
+            depthTest: false,
+            toneMapped: false,
+            side: THREE.FrontSide
+        });
+
+        this.videoPlane = new THREE.Mesh(geometry, material);
+
+        // Position the plane in front of the camera
+        this.videoPlane.position.set(0, 0, -distance);
+        this.videoPlane.renderOrder = -1000; // Render first (background)
+
+        // Add to scene
+        scene.add(this.videoPlane);
+
+        console.log('✅ Video background created with proper aspect ratio');
     }
-
-    const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
-
-    const material = new THREE.MeshBasicMaterial({
-        map: this.videoTexture,
-        depthWrite: false,
-        depthTest: false,
-        toneMapped: false,
-        side: THREE.FrontSide
-    });
-
-    this.videoPlane = new THREE.Mesh(geometry, material);
-    this.videoPlane.position.set(0, 0, -distance);
-    this.videoPlane.renderOrder = -1000;
-
-    scene.add(this.videoPlane);
-    
-    console.log('✅ Video background created');
-}
 
     /**
      * Update video plane size when window resizes

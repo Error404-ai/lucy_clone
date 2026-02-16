@@ -39,24 +39,23 @@ const CONFIG = {
 
     /* ---------------- SKELETON ---------------- */
 
-  SKELETON: {
-    SMOOTHING_FACTOR: 0.25,    // Slightly lower for more stability
-    BASE_SCALE: 1.4,           // ✅ MUCH LARGER - for normal jacket size
-    MIN_SCALE: 0.4,            // ✅ Increased minimum
-    MAX_SCALE: 2.0,            // ✅ Increased maximum
-    DEPTH_OFFSET: 2.5,         // Base depth (will be dynamic now)
+    SKELETON: {
+        SMOOTHING_FACTOR: 0.3,
+        BASE_SCALE: 0.08,      // Smaller base scale for normal-sized jacket
+        MIN_SCALE: 0.03,       // Minimum scale
+        MAX_SCALE: 0.12,       // Maximum scale
+        DEPTH_OFFSET: 2.5,     // Distance from camera
 
-    LANDMARKS: {
-        LEFT_SHOULDER: 11,
-        RIGHT_SHOULDER: 12,
-        LEFT_HIP: 23,
-        RIGHT_HIP: 24,
-        LEFT_ELBOW: 13,
-        RIGHT_ELBOW: 14,
-        NOSE: 0
-    }
-},
-    
+        LANDMARKS: {
+            LEFT_SHOULDER: 11,
+            RIGHT_SHOULDER: 12,
+            LEFT_HIP: 23,
+            RIGHT_HIP: 24,
+            LEFT_ELBOW: 13,
+            RIGHT_ELBOW: 14,
+            NOSE: 0
+        }
+    },
 
     /* ---------------- PERFORMANCE ---------------- */
 

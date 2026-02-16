@@ -1,4 +1,4 @@
-// Scene Manager - FIXED with proper mobile camera FOV
+// Scene Manager - FIXED with proper camera setup
 
 class SceneManager {
     constructor() {
@@ -26,9 +26,9 @@ class SceneManager {
             const height = this.canvas.clientHeight || window.innerHeight;
             const aspect = width / height;
 
-            // ✅ CRITICAL FIX: Proper FOV for mobile devices
+            // Detect mobile device
             const isMobile = /Android|webOS|iPhone|iPad|iPod/i.test(navigator.userAgent);
-            const CAMERA_FOV = isMobile ? 75 : 60;  // Wider FOV prevents extreme zoom
+            const CAMERA_FOV = isMobile ? 90 : 75;  // Wider FOV for mobile
             
             console.log(`📱 Device: ${isMobile ? 'Mobile' : 'Desktop'}`);
             console.log(`📷 Camera FOV: ${CAMERA_FOV}°`);
@@ -38,7 +38,7 @@ class SceneManager {
                 CAMERA_FOV,
                 aspect,
                 0.1,
-                1000
+                1000 // Increased far plane to 1000
             );
 
             // Camera at origin, looking down -Z axis
@@ -64,10 +64,8 @@ class SceneManager {
             this.renderer.outputColorSpace = THREE.SRGBColorSpace;
             this.renderer.toneMapping = THREE.NoToneMapping;
 
-            // ✅ CRITICAL: Enable depth testing globally
-            this.renderer.autoClear = true;  // Changed from false
-            this.renderer.autoClearDepth = true;
-            this.renderer.autoClearStencil = true;
+            // Enable depth testing but not depth writing for video background
+            this.renderer.autoClear = false;
 
             // Lighting setup
             this.setupLights();
@@ -88,33 +86,21 @@ class SceneManager {
     }
 
     setupLights() {
-        console.log('💡 Setting up scene lighting...');
-        
-        // ✅ BRIGHTER ambient light
-        const ambient = new THREE.AmbientLight(0xffffff, 1.2);
+        // Bright ambient light for even illumination
+        const ambient = new THREE.AmbientLight(0xffffff, 0.8);
         this.scene.add(ambient);
 
-        // ✅ STRONGER key light from front
-        const keyLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        keyLight.position.set(0, 3, 5);
-        this.scene.add(keyLight);
-        
-        // ✅ Fill light from left
-        const fillLight = new THREE.DirectionalLight(0xffffff, 0.5);
-        fillLight.position.set(-4, 2, 3);
-        this.scene.add(fillLight);
-        
-        // ✅ Rim light from behind
-        const rimLight = new THREE.DirectionalLight(0xffffff, 0.3);
-        rimLight.position.set(0, 2, -2);
-        this.scene.add(rimLight);
+        // Directional light from above-front (simulates natural lighting)
+        const dir = new THREE.DirectionalLight(0xffffff, 0.5);
+        dir.position.set(0, 2, 1);
+        this.scene.add(dir);
 
-        // Hemisphere light
-        const hemi = new THREE.HemisphereLight(0xffffff, 0x888888, 0.5);
+        // Hemisphere light for natural fill (sky/ground)
+        const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.4);
         hemi.position.set(0, 20, 0);
         this.scene.add(hemi);
 
-        console.log("✅ Enhanced lighting configured (5 light sources)");
+        console.log("💡 Lights configured");
     }
 
     add(object) {
@@ -169,8 +155,8 @@ class SceneManager {
     render() {
         if (!this.isInitialized) return;
         
-        // ✅ CRITICAL: Clear depth buffer before rendering
-        this.renderer.clear(true, true, true);
+        // Clear before rendering
+        this.renderer.clear();
         this.renderer.render(this.scene, this.camera);
     }
 

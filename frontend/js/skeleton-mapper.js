@@ -8,16 +8,10 @@ class SkeletonMapper {
         };
         this.initialized = false;
         this.hasShownJacket = false;
-        
-        // Store video dimensions for proper scaling
-        this.videoWidth = 1280;
-        this.videoHeight = 720;
     }
 
-    async init(videoWidth, videoHeight) {
+    async init() {
         console.log('🦴 SkeletonMapper initializing...');
-        this.videoWidth = videoWidth || 1280;
-        this.videoHeight = videoHeight || 720;
         this.initialized = true;
         return true;
     }
@@ -50,7 +44,6 @@ class SkeletonMapper {
         const RS = landmarks[L.RIGHT_SHOULDER];
         const LH = landmarks[L.LEFT_HIP];
         const RH = landmarks[L.RIGHT_HIP];
-        const NOSE = landmarks[L.NOSE];
 
         // Check visibility
         if (!LS || !RS || !LH || !RH ||
@@ -60,59 +53,37 @@ class SkeletonMapper {
         }
 
         /* ================= POSITION ================= */
-        
-        // ✅ FIX: Anchor to SHOULDERS, not torso center
-        // Calculate shoulder midpoint
-        const shoulderCenterX = (LS.x + RS.x) / 2;
-        const shoulderCenterY = (LS.y + RS.y) / 2;
-        
-        // Slight offset downward to account for collar/neckline
-        const neckOffsetY = 0.02; // Move down slightly from pure shoulder center
-        const anchorY = shoulderCenterY + neckOffsetY;
 
-        // ✅ FIX: Dynamic depth based on shoulder width (closer person = wider shoulders)
-        const dx = RS.x - LS.x;
-        const dy = RS.y - LS.y;
-        const shoulderWidthNormalized = Math.sqrt(dx * dx + dy * dy);
-        
-        // Estimate depth: wider shoulders = closer to camera
-        // Typical shoulder width at 2.5m distance ≈ 0.2 normalized units
-        const referenceWidth = 0.2;
-        const estimatedDepth = 2.5 * (referenceWidth / Math.max(shoulderWidthNormalized, 0.1));
-        const DEPTH = THREE.MathUtils.clamp(estimatedDepth, 1.5, 4.0);
+        // Calculate torso center (average of shoulders and hips)
+        const centerX = (LS.x + RS.x + LH.x + RH.x) / 4;
+        const centerY = (LS.y + RS.y + LH.y + RH.y) / 4;
 
-        // Convert to world space
+        // Convert to world space with proper depth
+        const DEPTH = 2.5;  // Distance from camera
         const worldPos = compositeRenderer.getWorldPositionFromScreen(
-            shoulderCenterX, 
-            anchorY, 
+            centerX, 
+            centerY, 
             DEPTH
         );
 
-        // Smooth position with higher weight for stability
-        this.smooth.position.lerp(worldPos, 0.25);
+        // Smooth position
+        this.smooth.position.lerp(worldPos, 0.3);
         this.model.position.copy(this.smooth.position);
 
         /* ================= SCALE ================= */
 
-        // ✅ FIX: Better scaling formula
-        // The jacket model is at scale 1.0 in Blender units
-        // We need to scale it based on detected shoulder width
-        
-        // Calculate world-space shoulder width
-        const leftShoulderWorld = compositeRenderer.getWorldPositionFromScreen(LS.x, LS.y, DEPTH);
-        const rightShoulderWorld = compositeRenderer.getWorldPositionFromScreen(RS.x, RS.y, DEPTH);
-        const worldShoulderWidth = leftShoulderWorld.distanceTo(rightShoulderWorld);
-        
-        // Average human shoulder width is ~45cm = 0.45 units
-        // Jacket should be slightly wider than shoulders
-        const jacketToShoulderRatio = 1.4; // Jacket is 40% wider than shoulders
-        const targetScale = (worldShoulderWidth * jacketToShoulderRatio) / 0.6; // 0.6 = jacket model's base width
-        
-        // Clamp to reasonable range
-        const clampedScale = THREE.MathUtils.clamp(targetScale, 0.4, 2.0);
+        // Calculate shoulder width (in normalized screen space)
+        const dx = RS.x - LS.x;
+        const dy = RS.y - LS.y;
+        const shoulderWidth = Math.sqrt(dx * dx + dy * dy);
 
-        // Smooth scale with gentle interpolation
-        this.smooth.scale += (clampedScale - this.smooth.scale) * 0.2;
+        // ✅ FIXED: Proper scaling for normal-sized jacket
+        // The jacket is now at scale 1.0, not 0.01
+        const targetScale = shoulderWidth * 0.08;  // Much smaller multiplier
+        const clampedScale = THREE.MathUtils.clamp(targetScale, 0.03, 0.12);
+
+        // Smooth scale
+        this.smooth.scale += (clampedScale - this.smooth.scale) * 0.3;
         this.model.scale.setScalar(this.smooth.scale);
 
         /* ================= ROTATION ================= */
@@ -121,7 +92,7 @@ class SkeletonMapper {
         const roll = Math.atan2(dy, dx);
 
         // Smooth rotation
-        this.smooth.rotation += (roll - this.smooth.rotation) * 0.25;
+        this.smooth.rotation += (roll - this.smooth.rotation) * 0.3;
 
         // Apply rotation (Y faces camera, Z is roll)
         this.model.rotation.set(
@@ -138,10 +109,8 @@ class SkeletonMapper {
         if (!this.hasShownJacket) {
             console.log('✅ Jacket tracking active');
             console.log(`   Position: (${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)}, ${worldPos.z.toFixed(2)})`);
-            console.log(`   Scale: ${this.smooth.scale.toFixed(3)}`);
-            console.log(`   Depth: ${DEPTH.toFixed(2)}m`);
-            console.log(`   Shoulder width (normalized): ${shoulderWidthNormalized.toFixed(3)}`);
-            console.log(`   Shoulder width (world): ${worldShoulderWidth.toFixed(3)}`);
+            console.log(`   Scale: ${this.smooth.scale.toFixed(2)}`);
+            console.log(`   Shoulder width: ${shoulderWidth.toFixed(3)}`);
             this.hasShownJacket = true;
         }
     }
@@ -166,7 +135,7 @@ class SkeletonMapper {
         if (!this.model || !this.model.visible) {
             return 0;
         }
-        return 1.0;
+        return 1.0;  // Simplified - could add more sophisticated metrics
     }
 }
 

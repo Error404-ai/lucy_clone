@@ -140,12 +140,12 @@ body {
 /* ✅ FIXED: Canvas now visible and properly sized */
 #main-canvas {
     position: fixed;
-    top: 0 !important;
-    left: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
+    top: calc(var(--safe-top) + 60px);
+    left: 0;
+    width: 100vw;
+    height: calc(100vh - 60px - 200px - var(--safe-top) - var(--safe-bottom));
     display: block;
-    z-index: 1;  /* Behind UI elements (top bar, fabric panel at z-index 90-100) */
+    z-index: 2;
     pointer-events: none;
     background: transparent;
 }
