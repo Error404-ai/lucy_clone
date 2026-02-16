@@ -1,3 +1,5 @@
+// Composite Renderer - FIXED with proper fullscreen video background
+
 class CompositeRenderer {
     constructor() {
         this.canvas = document.getElementById('main-canvas');
@@ -21,6 +23,13 @@ class CompositeRenderer {
             this.width = width;
             this.height = height;
 
+            // Make canvas fullscreen
+            this.canvas.style.position = 'fixed';
+            this.canvas.style.top = '0';
+            this.canvas.style.left = '0';
+            this.canvas.style.width = '100vw';
+            this.canvas.style.height = '100vh';
+
             const scale = CONFIG.PERFORMANCE.RENDER_SCALE;
             const displayWidth = this.canvas.clientWidth || window.innerWidth;
             const displayHeight = this.canvas.clientHeight || window.innerHeight;
@@ -28,8 +37,10 @@ class CompositeRenderer {
             this.canvas.width = displayWidth * scale;
             this.canvas.height = displayHeight * scale;
 
+            // Setup video background
             this.setupVideoBackground();
 
+            // Resize handler
             window.addEventListener(
                 'resize',
                 Utils.debounce(() => this.onResize(), 250)
@@ -50,6 +61,7 @@ class CompositeRenderer {
             return;
         }
 
+        // Wait for video to be ready
         const waitForVideo = () => {
             if (video.readyState >= 2) {
                 this.createVideoTexture(video);
@@ -62,42 +74,73 @@ class CompositeRenderer {
     }
 
     /**
-     * ✅ CRITICAL FIX: Video as full-screen background quad
+     * ✅ CRITICAL FIX: Fullscreen video background using proper camera-space plane
      */
     createVideoTexture(video) {
         console.log('🎥 Creating video background...');
 
+        // Create video texture
         this.videoTexture = new THREE.VideoTexture(video);
         this.videoTexture.minFilter = THREE.LinearFilter;
         this.videoTexture.magFilter = THREE.LinearFilter;
         this.videoTexture.format = THREE.RGBAFormat;
         this.videoTexture.colorSpace = THREE.SRGBColorSpace;
 
-        // Full-screen quad geometry (covers entire viewport)
-        const geometry = new THREE.PlaneGeometry(2, 2);
+        const camera = sceneManager.getCamera();
+        const scene = sceneManager.getScene();
+
+        // Calculate the plane size needed to fill the camera's view at a given distance
+        const distance = 10; // Distance from camera
+        const vFOV = camera.fov * Math.PI / 180; // Convert to radians
+        const planeHeight = 2 * Math.tan(vFOV / 2) * distance;
+        const planeWidth = planeHeight * camera.aspect;
+
+        console.log(`📐 Video plane: ${planeWidth.toFixed(2)} x ${planeHeight.toFixed(2)} at distance ${distance}`);
+
+        // Create geometry that fills the entire view
+        const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
 
         const material = new THREE.MeshBasicMaterial({
             map: this.videoTexture,
             depthWrite: false,
             depthTest: false,
             toneMapped: false,
-            side: THREE.DoubleSide
+            side: THREE.FrontSide
         });
 
         this.videoPlane = new THREE.Mesh(geometry, material);
 
-        // Position video plane behind everything
-        this.videoPlane.position.set(0, 0, -5);
-        this.videoPlane.renderOrder = -1000;
+        // Position the plane in front of the camera
+        this.videoPlane.position.set(0, 0, -distance);
+        this.videoPlane.renderOrder = -1000; // Render first (background)
 
-        // Add to scene (not camera)
-        sceneManager.getScene().add(this.videoPlane);
+        // Add to scene
+        scene.add(this.videoPlane);
 
-        console.log('✅ Video background created');
+        console.log('✅ Video background created and added to scene');
     }
 
     /**
-     * ✅ FIXED: Convert normalized screen coords to 3D world position
+     * Update video plane size when window resizes
+     */
+    updateVideoPlaneSize() {
+        if (!this.videoPlane) return;
+
+        const camera = sceneManager.getCamera();
+        const distance = 10;
+        const vFOV = camera.fov * Math.PI / 180;
+        const planeHeight = 2 * Math.tan(vFOV / 2) * distance;
+        const planeWidth = planeHeight * camera.aspect;
+
+        // Update geometry
+        this.videoPlane.geometry.dispose();
+        this.videoPlane.geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
+
+        console.log(`📐 Video plane resized: ${planeWidth.toFixed(2)} x ${planeHeight.toFixed(2)}`);
+    }
+
+    /**
+     * Convert normalized screen coords (0-1) to 3D world position
      */
     getWorldPositionFromScreen(nx, ny, depth = 2.5) {
         const camera = sceneManager.getCamera();
@@ -121,6 +164,8 @@ class CompositeRenderer {
         this.isRunning = true;
         this.lastRenderTime = performance.now();
         this.render();
+        
+        console.log('✅ Render loop started');
     }
 
     stop() {
@@ -129,6 +174,8 @@ class CompositeRenderer {
             cancelAnimationFrame(this.animationId);
             this.animationId = null;
         }
+        
+        console.log('⏸️ Render loop stopped');
     }
 
     render() {
@@ -141,15 +188,19 @@ class CompositeRenderer {
             const delta = now - this.lastRenderTime;
             const targetDelta = 1000 / CONFIG.PERFORMANCE.TARGET_FPS;
 
+            // Frame rate limiting
             if (delta < targetDelta - 1) return;
             this.lastRenderTime = now;
 
-            // Update video texture
+            // Update video texture every frame
             if (this.videoTexture && cameraManager.video?.readyState >= 2) {
                 this.videoTexture.needsUpdate = true;
             }
 
+            // Render the scene
             sceneManager.render();
+            
+            // Update FPS counter
             this.updateFPS();
 
         } catch (error) {
@@ -161,11 +212,15 @@ class CompositeRenderer {
         if (!this.canvas) return null;
 
         try {
+            // Force video texture update
             if (this.videoTexture && cameraManager.video?.readyState >= 2) {
                 this.videoTexture.needsUpdate = true;
             }
 
+            // Render one frame
             sceneManager.render();
+            
+            // Capture canvas
             return this.canvas.toDataURL('image/png', 0.95);
 
         } catch (error) {
@@ -207,13 +262,20 @@ class CompositeRenderer {
         this.canvas.height = displayHeight * scale;
 
         const renderer = sceneManager.getRenderer();
-        if (renderer) renderer.setSize(displayWidth, displayHeight);
+        if (renderer) {
+            renderer.setSize(displayWidth, displayHeight);
+        }
 
         const camera = sceneManager.getCamera();
         if (camera) {
             camera.aspect = displayWidth / displayHeight;
             camera.updateProjectionMatrix();
         }
+
+        // Update video plane to match new aspect ratio
+        this.updateVideoPlaneSize();
+        
+        console.log(`📐 Resized: ${displayWidth}x${displayHeight}`);
     }
 
     getFPS() {
@@ -223,11 +285,14 @@ class CompositeRenderer {
     dispose() {
         this.stop();
 
-        if (this.videoTexture) this.videoTexture.dispose();
+        if (this.videoTexture) {
+            this.videoTexture.dispose();
+        }
 
         if (this.videoPlane) {
             this.videoPlane.geometry.dispose();
             this.videoPlane.material.dispose();
+            sceneManager.getScene().remove(this.videoPlane);
         }
     }
 }

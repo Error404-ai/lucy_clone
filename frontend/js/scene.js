@@ -1,3 +1,5 @@
+// Scene Manager - FIXED with proper camera setup
+
 class SceneManager {
     constructor() {
         this.scene = null;
@@ -15,37 +17,38 @@ class SceneManager {
 
             this.canvas = document.getElementById("main-canvas");
 
-            // Scene
+            // Scene setup
             this.scene = new THREE.Scene();
-            this.scene.background = null;
+            this.scene.background = null; // Transparent for video background
 
             // Camera setup
             const width = this.canvas.clientWidth || window.innerWidth;
             const height = this.canvas.clientHeight || window.innerHeight;
             const aspect = width / height;
 
-            // ✅ MOBILE FIX: Detect mobile and use wider FOV
+            // Detect mobile device
             const isMobile = /Android|webOS|iPhone|iPad|iPod/i.test(navigator.userAgent);
             const CAMERA_FOV = isMobile ? 90 : 75;  // Wider FOV for mobile
             
             console.log(`📱 Device: ${isMobile ? 'Mobile' : 'Desktop'}`);
             console.log(`📷 Camera FOV: ${CAMERA_FOV}°`);
 
+            // Perspective camera
             this.camera = new THREE.PerspectiveCamera(
                 CAMERA_FOV,
                 aspect,
                 0.1,
-                100
+                1000 // Increased far plane to 1000
             );
 
-            // Camera at origin
+            // Camera at origin, looking down -Z axis
             this.camera.position.set(0, 0, 0);
             this.camera.lookAt(0, 0, -1);
 
-            // Projection scale
+            // Calculate projection scale for coordinate conversion
             this.projectionScale = 2 * Math.tan((CAMERA_FOV * Math.PI / 180) / 2);
 
-            // Renderer
+            // WebGL Renderer
             this.renderer = new THREE.WebGLRenderer({
                 canvas: this.canvas,
                 alpha: true,
@@ -56,12 +59,15 @@ class SceneManager {
 
             this.renderer.setSize(width, height);
             this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            this.renderer.setClearColor(0x000000, 0);
+            this.renderer.setClearColor(0x000000, 0); // Transparent
             this.renderer.sortObjects = true;
             this.renderer.outputColorSpace = THREE.SRGBColorSpace;
             this.renderer.toneMapping = THREE.NoToneMapping;
 
-            // Lighting
+            // Enable depth testing but not depth writing for video background
+            this.renderer.autoClear = false;
+
+            // Lighting setup
             this.setupLights();
 
             // Resize handling
@@ -69,6 +75,9 @@ class SceneManager {
 
             this.isInitialized = true;
             console.log("✅ Scene initialized");
+            console.log(`   Canvas: ${width}x${height}`);
+            console.log(`   Aspect: ${aspect.toFixed(2)}`);
+            console.log(`   FOV: ${CAMERA_FOV}°`);
 
         } catch (err) {
             console.error("❌ Scene init failed:", err);
@@ -77,19 +86,21 @@ class SceneManager {
     }
 
     setupLights() {
-        // Bright ambient light
+        // Bright ambient light for even illumination
         const ambient = new THREE.AmbientLight(0xffffff, 0.8);
         this.scene.add(ambient);
 
-        // Directional light from above-front
+        // Directional light from above-front (simulates natural lighting)
         const dir = new THREE.DirectionalLight(0xffffff, 0.5);
         dir.position.set(0, 2, 1);
         this.scene.add(dir);
 
-        // Hemisphere light for natural fill
+        // Hemisphere light for natural fill (sky/ground)
         const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.4);
         hemi.position.set(0, 20, 0);
         this.scene.add(hemi);
+
+        console.log("💡 Lights configured");
     }
 
     add(object) {
@@ -138,11 +149,14 @@ class SceneManager {
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(w, h);
         
-        console.log(`📐 Resized: ${w}x${h}`);
+        console.log(`📐 Resized: ${w}x${h}, aspect: ${(w/h).toFixed(2)}`);
     }
 
     render() {
         if (!this.isInitialized) return;
+        
+        // Clear before rendering
+        this.renderer.clear();
         this.renderer.render(this.scene, this.camera);
     }
 
@@ -156,6 +170,7 @@ class SceneManager {
             const obj = this.scene.children[0];
             this.scene.remove(obj);
         }
+        this.setupLights(); // Re-add lights after clearing
     }
 
     dispose() {
