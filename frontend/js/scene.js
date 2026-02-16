@@ -19,13 +19,17 @@ class SceneManager {
             this.scene = new THREE.Scene();
             this.scene.background = null;
 
-            // ✅ FIXED: Proper camera setup for full upper body
+            // Camera setup
             const width = this.canvas.clientWidth || window.innerWidth;
             const height = this.canvas.clientHeight || window.innerHeight;
             const aspect = width / height;
 
-            // Wider FOV to show full upper body (not just face)
-            const CAMERA_FOV = 75;
+            // ✅ MOBILE FIX: Detect mobile and use wider FOV
+            const isMobile = /Android|webOS|iPhone|iPad|iPod/i.test(navigator.userAgent);
+            const CAMERA_FOV = isMobile ? 90 : 75;  // Wider FOV for mobile
+            
+            console.log(`📱 Device: ${isMobile ? 'Mobile' : 'Desktop'}`);
+            console.log(`📷 Camera FOV: ${CAMERA_FOV}°`);
 
             this.camera = new THREE.PerspectiveCamera(
                 CAMERA_FOV,
@@ -34,11 +38,11 @@ class SceneManager {
                 100
             );
 
-            // Camera at origin (standard Three.js convention)
+            // Camera at origin
             this.camera.position.set(0, 0, 0);
             this.camera.lookAt(0, 0, -1);
 
-            // Projection scale for converting normalized coords to world space
+            // Projection scale
             this.projectionScale = 2 * Math.tan((CAMERA_FOV * Math.PI / 180) / 2);
 
             // Renderer
@@ -133,6 +137,8 @@ class SceneManager {
         this.camera.aspect = w / h;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(w, h);
+        
+        console.log(`📐 Resized: ${w}x${h}`);
     }
 
     render() {
