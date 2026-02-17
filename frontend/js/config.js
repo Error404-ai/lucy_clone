@@ -1,9 +1,11 @@
+// config.js - UPDATED FOR RIGGED JACKET
+
 const CONFIG = {
 
     /* ---------------- CAMERA ---------------- */
 
     CAMERA: {
-        WIDTH: 1280,  // Higher resolution for better quality
+        WIDTH: 1280,
         HEIGHT: 720,
         FRAME_RATE: 30,
         FACING_MODE: 'user'
@@ -12,7 +14,7 @@ const CONFIG = {
     /* ---------------- SCENE ---------------- */
 
     SCENE: {
-        CAMERA_FOV: 75,  // Wider FOV to show upper body
+        CAMERA_FOV: 75,
         CAMERA_NEAR: 0.1,
         CAMERA_FAR: 100,
         AMBIENT_LIGHT_INTENSITY: 0.8,
@@ -22,9 +24,10 @@ const CONFIG = {
     /* ---------------- JACKET ---------------- */
 
     JACKET: {
-        MODEL_PATH: 'assets/models/Jacket.glb',
+        // ✅ UPDATED: Use the rigged jacket model
+        MODEL_PATH: 'assets/models/16_Jacket.glb',  // Or wherever you export it
         ROTATION: { x: 0, y: Math.PI, z: 0 },
-        SCALE: 1.0,
+        SCALE: 0.5,  // Adjusted for rigged model
         POSITION: { x: 0, y: 0, z: -2.5 }
     },
 
@@ -41,19 +44,34 @@ const CONFIG = {
 
     SKELETON: {
         SMOOTHING_FACTOR: 0.3,
-        BASE_SCALE: 0.08,      // Smaller base scale for normal-sized jacket
-        MIN_SCALE: 0.03,       // Minimum scale
-        MAX_SCALE: 0.12,       // Maximum scale
-        DEPTH_OFFSET: 2.5,     // Distance from camera
+        BASE_SCALE: 2.5,           // ✅ UPDATED for rigged model
+        MIN_SCALE: 0.3,
+        MAX_SCALE: 1.0,
+        DEPTH_OFFSET: 2.5,
 
+        // ✅ UPDATED: MediaPipe landmark indices
         LANDMARKS: {
+            NOSE: 0,
+            LEFT_EYE: 2,
+            RIGHT_EYE: 5,
+            LEFT_EAR: 7,
+            RIGHT_EAR: 8,
             LEFT_SHOULDER: 11,
             RIGHT_SHOULDER: 12,
-            LEFT_HIP: 23,
-            RIGHT_HIP: 24,
             LEFT_ELBOW: 13,
             RIGHT_ELBOW: 14,
-            NOSE: 0
+            LEFT_WRIST: 15,
+            RIGHT_WRIST: 16,
+            LEFT_HIP: 23,
+            RIGHT_HIP: 24
+        },
+
+        // ✅ NEW: Bone animation settings
+        BONE_ANIMATION: {
+            ENABLED: true,
+            ROTATION_SMOOTHING: 0.3,
+            POSITION_SMOOTHING: 0.3,
+            USE_QUATERNION_SLERP: true
         }
     },
 
@@ -80,8 +98,8 @@ const CONFIG = {
     /* ---------------- API ---------------- */
 
     API: {
-        BASE_URL: '',
-        WS_URL: '',
+        BASE_URL: '',  // Update when backend is deployed
+        WS_URL: '',    // Update when backend is deployed
         ENDPOINTS: {
             VIRTUAL_TRYON: '/api/virtual-tryon',
             FABRIC_SCAN: '/api/fabric/scan',
@@ -92,7 +110,7 @@ const CONFIG = {
     /* ---------------- AI PIPELINE ---------------- */
 
     AI_PIPELINE: {
-        ENABLED: false,
+        ENABLED: false,  // Enable when backend is ready
         KEYFRAME_INTERVAL: 2000,
         JPEG_QUALITY: 0.8,
         BLEND_TRANSITION_DURATION: 500,
@@ -106,7 +124,8 @@ const CONFIG = {
     DEBUG: {
         VERBOSE: true,
         SHOW_LANDMARKS: false,
-        SHOW_SKELETON: false
+        SHOW_SKELETON: false,
+        SHOW_BONE_NAMES: false  // ✅ NEW: Show bone names in 3D
     }
 };
 
