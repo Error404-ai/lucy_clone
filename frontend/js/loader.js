@@ -1,61 +1,101 @@
-// FIXED Model Loader - Proper jacket orientation
+// loader.js - UPDATED with DRACOLoader + SkinnedMesh support
 
 class ModelLoader {
     constructor() {
+        // ✅ Setup DRACOLoader first
+        this.dracoLoader = new THREE.DRACOLoader();
+        this.dracoLoader.setDecoderPath(
+            'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/draco/'
+        );
+        this.dracoLoader.preload();
+
+        // ✅ Setup GLTFLoader with DRACOLoader attached
         this.loader = new THREE.GLTFLoader();
+        this.loader.setDRACOLoader(this.dracoLoader);
+
         this.jacketModel = null;
         this.jacketMeshes = [];
         this.jacketSkeleton = null;
         this.isLoaded = false;
-
-        if (typeof MeshoptDecoder !== 'undefined') {
-            this.loader.setMeshoptDecoder(MeshoptDecoder);
-        }
     }
 
     async loadJacket(modelPath = CONFIG.JACKET.MODEL_PATH) {
         return new Promise((resolve, reject) => {
             console.log('📦 Loading jacket model:', modelPath);
 
-            this.loader.load(modelPath, (gltf) => {
-                try {
-                    this.jacketModel = gltf.scene;
+            this.loader.load(
+                modelPath,
+                (gltf) => {
+                    try {
+                        this.jacketModel = gltf.scene;
 
-                    this.findJacketMeshes(this.jacketModel);
+                        // ✅ Find all meshes including SkinnedMesh
+                        this.findJacketMeshes(this.jacketModel);
 
-                    if (this.jacketMeshes.length === 0) {
-                        console.error('❌ No valid jacket mesh found');
-                        return reject(new Error('No valid jacket mesh found'));
+                        if (this.jacketMeshes.length === 0) {
+                            console.error('❌ No jacket mesh found');
+                            return reject(new Error('No jacket mesh found'));
+                        }
+
+                        // ✅ Check for SkinnedMesh (rigged jacket)
+                        let hasSkinnedMesh = false;
+                        this.jacketModel.traverse(child => {
+                            if (child.isSkinnedMesh) {
+                                hasSkinnedMesh = true;
+                                this.jacketSkeleton = child.skeleton;
+                                console.log(`✅ SkinnedMesh found: ${child.name}`);
+                                console.log(`✅ Bones: ${child.skeleton.bones.length}`);
+
+                                // Enable skinning
+                                child.frustumCulled = false;
+                                child.castShadow = false;
+                                child.receiveShadow = false;
+                            }
+                        });
+
+                        if (hasSkinnedMesh) {
+                            console.log('✅ Rigged jacket loaded! Arm movement enabled.');
+                        } else {
+                            console.log('ℹ️ Static jacket loaded (no bones found)');
+                        }
+
+                        // Set initial transform
+                        this.jacketModel.scale.setScalar(1.0);
+                        this.jacketModel.position.set(0, 0, 0);
+                        this.jacketModel.rotation.set(0, Math.PI, 0);
+                        this.jacketModel.visible = false;
+
+                        // Add to scene
+                        sceneManager.add(this.jacketModel);
+
+                        // ✅ Pass to skeleton mapper
+                        skeletonMapper.setJacket(this.jacketModel);
+
+                        this.isLoaded = true;
+                        console.log(`✅ Jacket loaded successfully`);
+                        console.log(`   Meshes: ${this.jacketMeshes.length}`);
+                        console.log(`   Has Skeleton: ${hasSkinnedMesh}`);
+
+                        resolve(this.jacketModel);
+
+                    } catch (error) {
+                        console.error('❌ Error processing jacket:', error);
+                        reject(error);
                     }
-
-                    // ✅ FIX: Proper initial setup (NO rotation - jacket should be correct in GLB)
-                    this.jacketModel.scale.setScalar(1.0);
-                    this.jacketModel.position.set(0, 0, 0);
-                    this.jacketModel.rotation.set(0, Math.PI, 0);  // Only Y rotation to face camera
-                    this.jacketModel.visible = false;  // Start hidden until pose detected
-
-                    // Add to scene
-                    sceneManager.add(this.jacketModel);
-                    
-                    // ✅ CRITICAL FIX: Link to skeleton mapper
-                    skeletonMapper.setJacket(this.jacketModel);
-
-                    this.isLoaded = true;
-                    console.log(`✅ Jacket loaded with ${this.jacketMeshes.length} mesh(es)`);
-                    console.log('   Position:', this.jacketModel.position);
-                    console.log('   Rotation:', this.jacketModel.rotation);
-                    console.log('   Scale:', this.jacketModel.scale);
-
-                    resolve(this.jacketModel);
-
-                } catch (error) {
-                    console.error('❌ Error processing jacket:', error);
+                },
+                // Progress callback
+                (progress) => {
+                    if (progress.total > 0) {
+                        const percent = Math.round((progress.loaded / progress.total) * 100);
+                        Utils.updateLoadingText(`Loading jacket model... ${percent}%`);
+                    }
+                },
+                // Error callback
+                (error) => {
+                    console.error('❌ Failed to load jacket:', error);
                     reject(error);
                 }
-            }, undefined, (error) => {
-                console.error('❌ Failed to load jacket:', error);
-                reject(error);
-            });
+            );
         });
     }
 
@@ -63,54 +103,53 @@ class ModelLoader {
         this.jacketMeshes = [];
 
         object.traverse(child => {
-            if (!(child.isMesh || child.isSkinnedMesh)) return;
+            // ✅ Accept BOTH regular Mesh AND SkinnedMesh
+            if (!child.isMesh && !child.isSkinnedMesh) return;
 
             const vertexCount = child.geometry?.attributes?.position?.count || 0;
             const name = child.name.toLowerCase();
 
-            // Filter out helper objects
-            const helperKeywords = ['cube', 'plane', 'helper', 'mannequin', 'body', 'collider', 'bound', 'reference', 'guide', 'armature'];
+            // Skip helpers
+            const helperKeywords = ['cube', 'plane', 'helper', 'collider', 'bound', 'reference', 'guide'];
             const isHelper = helperKeywords.some(keyword => name.includes(keyword));
 
-            if (isHelper || vertexCount < 2000 || vertexCount > 100000) {
+            if (isHelper) {
                 child.visible = false;
-                console.log(`   Hiding helper: ${child.name} (${vertexCount} verts)`);
                 return;
             }
 
-            // This is a real jacket mesh
+            // ✅ Lower vertex threshold for jacket-only mesh
+            if (vertexCount < 100) {
+                child.visible = false;
+                return;
+            }
+
             this.jacketMeshes.push(child);
             child.frustumCulled = false;
             child.castShadow = false;
             child.receiveShadow = false;
-            child.renderOrder = 100;  // Render after video background
-            
-            console.log(`   Found jacket mesh: ${child.name} (${vertexCount} verts)`);
+
+            console.log(`✅ Found mesh: "${child.name}" (${vertexCount} vertices, ${child.isSkinnedMesh ? 'SKINNED' : 'STATIC'})`);
         });
 
-        console.log(`📊 Found ${this.jacketMeshes.length} jacket mesh(es)`);
+        console.log(`📊 Total meshes found: ${this.jacketMeshes.length}`);
     }
 
     getModel() { return this.jacketModel; }
     getMeshes() { return this.jacketMeshes; }
+    getSkeleton() { return this.jacketSkeleton; }
     isModelLoaded() { return this.isLoaded; }
-    setVisible(visible) { 
+    
+    setVisible(visible) {
         if (this.jacketModel) {
             this.jacketModel.visible = visible;
         }
     }
 
-    debugPrintHierarchy() {
-        if (!this.jacketModel) { 
-            console.log('No model loaded'); 
-            return; 
+    dispose() {
+        if (this.dracoLoader) {
+            this.dracoLoader.dispose();
         }
-        console.log('📋 Model Hierarchy:');
-        this.jacketModel.traverse(child => {
-            const type = child.isMesh ? 'Mesh' : child.isSkinnedMesh ? 'SkinnedMesh' : child.isBone ? 'Bone' : 'Object3D';
-            const verts = child.geometry?.attributes?.position?.count || 0;
-            console.log(`  ${type}: ${child.name} (${verts} verts)`);
-        });
     }
 }
 
