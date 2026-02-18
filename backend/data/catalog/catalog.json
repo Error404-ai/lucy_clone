@@ -1,0 +1,68 @@
+[
+  {
+    "id": "denim-blue",
+    "name": "Blue Denim",
+    "diffuseUrl": "/static/textures/denim_blue_diffuse.jpg",
+    "normalUrl": "/static/textures/denim_blue_normal.jpg",
+    "roughnessUrl": "/static/textures/denim_blue_roughness.jpg",
+    "thumbnail": "/static/textures/denim_blue_thumb.jpg",
+    "roughness": 0.8,
+    "metalness": 0.0,
+    "description": "Classic blue denim fabric with natural texture"
+  },
+  {
+    "id": "leather-black",
+    "name": "Black Leather",
+    "diffuseUrl": "/static/textures/leather_black_diffuse.jpg",
+    "normalUrl": "/static/textures/leather_black_normal.jpg",
+    "roughnessUrl": "/static/textures/leather_black_roughness.jpg",
+    "thumbnail": "/static/textures/leather_black_thumb.jpg",
+    "roughness": 0.4,
+    "metalness": 0.1,
+    "description": "Premium black leather with subtle sheen"
+  },
+  {
+    "id": "cotton-grey",
+    "name": "Grey Cotton",
+    "diffuseUrl": "/static/textures/cotton_grey_diffuse.jpg",
+    "normalUrl": "/static/textures/cotton_grey_normal.jpg",
+    "roughnessUrl": "/static/textures/cotton_grey_roughness.jpg",
+    "thumbnail": "/static/textures/cotton_grey_thumb.jpg",
+    "roughness": 0.9,
+    "metalness": 0.0,
+    "description": "Soft grey cotton fabric, breathable and comfortable"
+  },
+  {
+    "id": "wool-navy",
+    "name": "Navy Wool",
+    "diffuseUrl": "/static/textures/wool_navy_diffuse.jpg",
+    "normalUrl": "/static/textures/wool_navy_normal.jpg",
+    "roughnessUrl": "/static/textures/wool_navy_roughness.jpg",
+    "thumbnail": "/static/textures/wool_navy_thumb.jpg",
+    "roughness": 0.85,
+    "metalness": 0.0,
+    "description": "Warm navy wool with fine texture"
+  },
+  {
+    "id": "silk-champagne",
+    "name": "Champagne Silk",
+    "diffuseUrl": "/static/textures/silk_champagne_diffuse.jpg",
+    "normalUrl": "/static/textures/silk_champagne_normal.jpg",
+    "roughnessUrl": "/static/textures/silk_champagne_roughness.jpg",
+    "thumbnail": "/static/textures/silk_champagne_thumb.jpg",
+    "roughness": 0.2,
+    "metalness": 0.05,
+    "description": "Luxurious champagne silk with elegant sheen"
+  },
+  {
+    "id": "polyester-red",
+    "name": "Red Polyester",
+    "diffuseUrl": "/static/textures/polyester_red_diffuse.jpg",
+    "normalUrl": "/static/textures/polyester_red_normal.jpg",
+    "roughnessUrl": "/static/textures/polyester_red_roughness.jpg",
+    "thumbnail": "/static/textures/polyester_red_thumb.jpg",
+    "roughness": 0.5,
+    "metalness": 0.0,
+    "description": "Vibrant red polyester, durable and easy-care"
+  }
+]
