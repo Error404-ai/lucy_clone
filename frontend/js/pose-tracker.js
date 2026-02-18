@@ -10,7 +10,6 @@ class PoseTracker {
         this.processInterval = 1000 / 30;
         this.isProcessing = false;
 
-        // detection monitoring
         this.detectionCount = 0;
         this.lastDetectionLog = 0;
     }
@@ -26,7 +25,7 @@ class PoseTracker {
         });
 
         this.pose.setOptions({
-            modelComplexity: 0,
+            modelComplexity: 1,          // FIX: was 0 (lite). Use 1 (full) for stable shoulder tracking
             smoothLandmarks: true,
             enableSegmentation: false,
             minDetectionConfidence: 0.55,
@@ -36,7 +35,7 @@ class PoseTracker {
         this.pose.onResults(r => this.onResults(r));
 
         this.isInitialized = true;
-        console.log("✅ PoseTracker ready (AR mode)");
+        console.log("✅ PoseTracker ready");
     }
 
     /* ================= START ================= */
@@ -47,7 +46,6 @@ class PoseTracker {
             return;
         }
 
-        // ensure video is playing
         if (video.readyState < 2) {
             try { await video.play(); } catch {}
         }
@@ -84,56 +82,51 @@ class PoseTracker {
     /* ================= RESULTS ================= */
 
     onResults(results) {
-
-        // --- No pose detected ---
         if (!results.poseLandmarks) {
-
             const now = performance.now();
             if (now - this.lastDetectionLog > 5000) {
                 console.log('⚠️ No pose detected (5s)');
                 this.lastDetectionLog = now;
             }
-
             this.smoothedLandmarks = null;
             this.callbacks.forEach(cb => cb({ landmarks: null }));
             Utils.updateStatus('tracking', false);
             return;
         }
 
-        // --- Smooth landmarks ---
         this.landmarks = results.poseLandmarks;
         this.detectionCount++;
 
+        // FIX: EMA alpha was 0.6 — way too high, caused wild jitter.
+        // 0.6 means 60% new noisy value every frame → jacket flies around.
+        // 0.18 means 18% new value → smooth, stable, still responsive.
+        const EMA_ALPHA = 0.18;
+
         if (!this.smoothedLandmarks) {
-            this.smoothedLandmarks = this.landmarks;
+            this.smoothedLandmarks = this.landmarks.map(lm => ({ ...lm }));
         } else {
             this.smoothedLandmarks = this.landmarks.map((lm, i) => ({
-                x: Utils.ema(lm.x, this.smoothedLandmarks[i].x, 0.6),
-                y: Utils.ema(lm.y, this.smoothedLandmarks[i].y, 0.6),
-                z: Utils.ema(lm.z, this.smoothedLandmarks[i].z, 0.6),
-                visibility: lm.visibility
+                x:          Utils.ema(lm.x,          this.smoothedLandmarks[i].x,          EMA_ALPHA),
+                y:          Utils.ema(lm.y,          this.smoothedLandmarks[i].y,          EMA_ALPHA),
+                z:          Utils.ema(lm.z,          this.smoothedLandmarks[i].z,          EMA_ALPHA),
+                visibility: Utils.ema(lm.visibility, this.smoothedLandmarks[i].visibility, EMA_ALPHA)
             }));
         }
 
         /* ---------- STABILITY FILTER ---------- */
-
-        const L = CONFIG.SKELETON.LANDMARKS;
+        const L  = CONFIG.SKELETON.LANDMARKS;
         const LS = this.smoothedLandmarks[L.LEFT_SHOULDER];
         const RS = this.smoothedLandmarks[L.RIGHT_SHOULDER];
 
-        // Reject unstable detection
         if (!LS || !RS || LS.visibility < 0.35 || RS.visibility < 0.35) {
             this.callbacks.forEach(cb => cb({ landmarks: null }));
             return;
         }
 
-        /* ---------- VALID POSE ---------- */
-
         Utils.updateStatus('tracking', true);
 
         if (this.detectionCount === 1 || this.detectionCount % 120 === 0) {
-            console.log(`✅ Stable pose detected (#${this.detectionCount})`);
-
+            console.log(`✅ Stable pose #${this.detectionCount} — LS=(${LS.x.toFixed(2)},${LS.y.toFixed(2)}) RS=(${RS.x.toFixed(2)},${RS.y.toFixed(2)})`);
         }
 
         this.callbacks.forEach(cb => cb({ landmarks: this.smoothedLandmarks }));
@@ -141,22 +134,10 @@ class PoseTracker {
 
     /* ================= API ================= */
 
-    onPoseUpdate(cb) {
-        this.callbacks.push(cb);
-    }
-
-    isPoseDetected() {
-        return !!this.smoothedLandmarks;
-    }
-
-    getDetectionCount() {
-        return this.detectionCount;
-    }
-
-    stop() {
-        this.isProcessing = false;
-        console.log('⏹️ Pose tracker stopped');
-    }
+    onPoseUpdate(cb)     { this.callbacks.push(cb); }
+    isPoseDetected()     { return !!this.smoothedLandmarks; }
+    getDetectionCount()  { return this.detectionCount; }
+    stop()               { this.isProcessing = false; console.log('⏹️ Pose tracker stopped'); }
 }
 
 const poseTracker = new PoseTracker();

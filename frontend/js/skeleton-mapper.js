@@ -129,9 +129,18 @@ class SkeletonMapper {
         }
 
         // ── Shoulder geometry ────────────────────────────────────────
-        const shoulderMidX  = (LS.x + RS.x) * 0.5;
+        // FIX 1: MIRROR correction.
+        // MediaPipe gives coords in original (unflipped) video space.
+        // But browsers mirror the webcam feed by default (selfie view).
+        // So we flip X: mirroredX = 1 - rawX
+        const lsX = 1 - LS.x;
+        const rsX = 1 - RS.x;
+
+        const shoulderMidX  = (lsX + rsX) * 0.5;
         const shoulderMidY  = (LS.y + RS.y) * 0.5;
-        const dxS           = RS.x - LS.x;
+
+        // Width calc uses original coords (distance is mirror-invariant)
+        const dxS           = RS.x - LS.x;  // magnitude only, sign doesn't matter
         const dyS           = RS.y - LS.y;
         const shoulderWidth = Math.sqrt(dxS * dxS + dyS * dyS);
 
@@ -150,33 +159,45 @@ class SkeletonMapper {
         const depth     = THREE.MathUtils.clamp(rawDepth, 1.2, 2.8);
 
         // ── Torso Y anchor ───────────────────────────────────────────
+        // FIX 2: Sit jacket lower — on chest, not at chin level.
+        // Shift 35% of the way from shoulders toward hips (was 18%).
         let torsoY = shoulderMidY;
         if (LH && RH && LH.visibility > 0.3) {
             const hipMidY = (LH.y + RH.y) * 0.5;
-            torsoY = shoulderMidY + (hipMidY - shoulderMidY) * 0.18;
+            torsoY = shoulderMidY + (hipMidY - shoulderMidY) * 0.35;
+        } else {
+            // Hips not visible — nudge down by a fixed amount in normalized space
+            torsoY = shoulderMidY + 0.08;
         }
 
         const worldTarget = this._normToWorld(shoulderMidX, torsoY, depth);
 
         // ── Scale ────────────────────────────────────────────────────
-        // World-space shoulder width → scale jacket to match
+        // FIX 3: Better shoulder span default + wider clamp.
+        // If auto-detected span from bounding box is near zero (model not
+        // yet in scene when measured), fall back to a tuned constant.
         const wsWidth           = this._normWidthToWorld(shoulderWidth, depth);
-        const modelShoulderSpan = this._modelShoulderSpan || 0.5;
-        const targetScale       = THREE.MathUtils.clamp(wsWidth / modelShoulderSpan, 0.5, 4.0);
+        const modelShoulderSpan = this._modelShoulderSpan || 0.38; // tuned for typical GLB jackets
+        const targetScale       = THREE.MathUtils.clamp(wsWidth / modelShoulderSpan, 0.8, 6.0);
 
         // ── Rotation ─────────────────────────────────────────────────
-        const roll = Math.atan2(dyS, dxS);
+        // FIX 4: Clamp roll tightly so head turns don't spin the jacket.
+        // Real shoulder tilt when standing: rarely more than ±8°
+        const rawRoll = Math.atan2(dyS, dxS);
+        const roll    = THREE.MathUtils.clamp(rawRoll, -0.14, 0.14); // ±8 degrees
 
+        // Body lean from Z depth — very subtle, only apply if data is reliable
         let lean = 0;
-        if (LS.z !== undefined && RS.z !== undefined) {
-            lean = THREE.MathUtils.clamp(((LS.z + RS.z) * 0.5) * 1.2, -0.4, 0.4);
+        if (LS.z !== undefined && RS.z !== undefined && Math.abs(LS.z) < 0.5) {
+            lean = THREE.MathUtils.clamp(((LS.z + RS.z) * 0.5) * 0.8, -0.25, 0.25);
         }
 
         // ── Smooth ──────────────────────────────────────────────────
-        this.smooth.position.lerp(worldTarget, 0.20);
-        this.smooth.scale += (targetScale - this.smooth.scale) * 0.22;
-        this.smooth.roll  += (roll        - this.smooth.roll)  * 0.25;
-        this.smooth.lean  += (lean        - this.smooth.lean)  * 0.25;
+        // Slower position lerp = more stable, less jittery
+        this.smooth.position.lerp(worldTarget, 0.12);
+        this.smooth.scale += (targetScale - this.smooth.scale) * 0.15;
+        this.smooth.roll  += (roll        - this.smooth.roll)  * 0.10; // very slow roll
+        this.smooth.lean  += (lean        - this.smooth.lean)  * 0.10;
 
         // ── Apply ────────────────────────────────────────────────────
         this._applyTransform(
@@ -227,10 +248,11 @@ class SkeletonMapper {
         const RS = lm[L.RIGHT_SHOULDER];
         if (!LS || !RS) return;
 
-        // Turn estimation: right shoulder going back → turning left
+        // Turn estimation from Z-depth delta.
+        // Flip sign (zL-zR) because webcam feed is mirrored.
         const zL   = LS.z || 0;
         const zR   = RS.z || 0;
-        const turn = THREE.MathUtils.clamp((zR - zL) * 3.0, -1, 1);
+        const turn = THREE.MathUtils.clamp((zL - zR) * 3.0, -1, 1);
 
         // Roughness: more arm spread → fabric tension → slightly rougher
         if (mat.roughness !== undefined) {
