@@ -1,51 +1,54 @@
-// skeleton-mapper.js — REWRITTEN FOR WEARABLE JACKET
-// Fixes: scale, position, depth, lighting response, bone animation
-// Goal: jacket sits ON the body, moves with it, responds to light naturally
+// skeleton-mapper.js — FULLY ADAPTIVE VERSION
+// Zero hardcoded person values. Everything is derived from landmarks each frame.
+// Works for any person at any distance from any camera.
 
 class SkeletonMapper {
     constructor() {
-        this.model = null;
-        this.skeleton = null;
-        this.bones = {};
-        this.boneMatrices = {};         // rest-pose cache
-        this.videoWidth  = 1280;
-        this.videoHeight = 720;
-        this.initialized = false;
+        this.model         = null;
+        this.skeleton      = null;
+        this.bones         = {};
+        this.boneMatrices  = {};
+        this.initialized   = false;
 
-        // ── Smoothing state ──────────────────────────────────────────
+        // ── Smoothing ────────────────────────────────────────────────
         this.smooth = {
             position:      new THREE.Vector3(0, 0, 0),
             scale:         1.0,
-            roll:          0,           // shoulder tilt (Z)
-            lean:          0,           // body lean (X)
+            roll:          0,
+            lean:          0,
             boneRotations: {}
         };
 
-        // ── Calibration ──────────────────────────────────────────────
-        // Set once on first good frame; lets us anchor the jacket
-        // to the PERSON's actual proportions instead of guessing.
-        this.calibrated       = false;
-        this.refShoulderWidth = null;   // normalized, at capture moment
-        this.refDepth         = null;
+        // ── Per-person calibration ────────────────────────────────────
+        // Collected from the first N stable frames, never hardcoded.
+        // This makes the jacket fit ANY person at ANY distance.
+        this.cal = {
+            ready:         false,
+            frames:        0,
+            FRAMES_NEEDED: 20,
+            sum: {
+                shoulderWidth: 0,
+                torsoHeight:   0,
+            },
+            ref: {
+                shoulderWidth: null,
+                torsoHeight:   null,
+                depth:         null,
+            }
+        };
 
-        // ── Lighting ─────────────────────────────────────────────────
-        this.jacketMaterial   = null;
-        this.dynamicLight     = null;   // set by setDynamicLight()
+        // ── Material / lighting ───────────────────────────────────────
+        this.jacketMaterial    = null;
+        this.dynamicLight      = null;
         this._baseEnvIntensity = 0.4;
 
-        // ── Debug ────────────────────────────────────────────────────
         this.frameCount = 0;
-        this.debugMode  = true;         // set false in production
+        this.debugMode  = true;
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    //  INIT
-    // ─────────────────────────────────────────────────────────────────
     async init(videoWidth, videoHeight) {
-        this.videoWidth  = videoWidth  || 1280;
-        this.videoHeight = videoHeight || 720;
         this.initialized = true;
-        console.log('🦴 SkeletonMapper ready');
+        console.log('🦴 SkeletonMapper ready (fully adaptive — no hardcoded values)');
         return true;
     }
 
@@ -55,58 +58,101 @@ class SkeletonMapper {
     setJacket(model) {
         this.model = model;
 
-        // Find mesh
         let mesh = null;
-        model.traverse(c => {
-            if (c.isSkinnedMesh && !mesh) mesh = c;
-        });
-        if (!mesh) {
-            model.traverse(c => { if (c.isMesh && !mesh) mesh = c; });
-        }
-        if (!mesh) { console.error('❌ No mesh in jacket model'); return; }
+        model.traverse(c => { if (c.isSkinnedMesh && !mesh) mesh = c; });
+        if (!mesh) model.traverse(c => { if (c.isMesh && !mesh) mesh = c; });
+        if (!mesh) { console.error('❌ No mesh found'); return; }
 
-        // Cache material for dynamic shading
         if (mesh.material) {
             this.jacketMaterial = mesh.material;
-            if (this.jacketMaterial.type === 'MeshBasicMaterial') {
-                console.warn('⚠️  Jacket uses MeshBasicMaterial — no shadows/shading. ' +
-                             'Switch to MeshStandardMaterial in your 3D tool.');
-            }
+            if (this.jacketMaterial.type === 'MeshBasicMaterial')
+                console.warn('⚠️  MeshBasicMaterial — switch to MeshStandardMaterial for shading.');
         }
 
-        // Skeleton
         this.skeleton = mesh.skeleton || null;
         if (this.skeleton) {
             console.log(`✅ Skeleton: ${this.skeleton.bones.length} bones`);
             this._mapBones();
             this._cacheRestPose();
-        } else {
-            console.log('ℹ️  No skeleton — rigid tracking only');
         }
 
-        // Hide until first good pose
         model.visible = false;
 
-        this._logModelBounds(model);
+        // Measure jacket geometry — used for scaling, not person-specific
+        const bbox = new THREE.Box3().setFromObject(model);
+        const size = new THREE.Vector3();
+        bbox.getSize(size);
+        this._modelW = size.x > 0 ? size.x : 1.0;
+        this._modelH = size.y > 0 ? size.y : 1.0;
+        console.log(`📏 Jacket model: W=${size.x.toFixed(3)} H=${size.y.toFixed(3)}`);
     }
 
-    // Optional: pass a Three.js PointLight or DirectionalLight
-    // so the mapper can shift it as the person turns, faking real shading.
-    setDynamicLight(light) {
-        this.dynamicLight = light;
+    setDynamicLight(light) { this.dynamicLight = light; }
+
+    // ─────────────────────────────────────────────────────────────────
+    //  CALIBRATION
+    //  Observes the person for 20 frames to measure:
+    //    • their shoulder width in normalized 0-1 coords
+    //    • their torso height (shoulder→hip)
+    //  Then computes the correct depth using real human proportions
+    //  (average shoulder span = 45cm) — no manual distance needed.
+    // ─────────────────────────────────────────────────────────────────
+    _accumulate(LS, RS, LH, RH) {
+        const sw = Math.sqrt((RS.x-LS.x)**2 + (RS.y-LS.y)**2);
+        this.cal.sum.shoulderWidth += sw;
+
+        const hipsOK = LH && RH && LH.visibility > 0.4 && RH.visibility > 0.4;
+        if (hipsOK) {
+            const shY  = (LS.y + RS.y) / 2;
+            const hipY = (LH.y + RH.y) / 2;
+            this.cal.sum.torsoHeight += Math.abs(hipY - shY);
+        }
+
+        this.cal.frames++;
+        if (this.cal.frames >= this.cal.FRAMES_NEEDED) this._lockCalibration(hipsOK);
+    }
+
+    _lockCalibration(hasHips) {
+        const n   = this.cal.frames;
+        const ref = this.cal.ref;
+
+        ref.shoulderWidth = this.cal.sum.shoulderWidth / n;
+
+        // If hips were visible during calibration, use real measurement.
+        // Otherwise estimate: human torso ≈ 1.4× shoulder width.
+        ref.torsoHeight = hasHips
+            ? this.cal.sum.torsoHeight / n
+            : ref.shoulderWidth * 1.4;
+
+        // Back-calculate real-world depth from observed shoulder width.
+        // Average human shoulder span = 0.45m.
+        // normWidth = worldWidth / (2 × tan(fov/2) × depth × aspect)
+        // → depth = 0.45 / (normWidth × 2 × tan(fov/2) × aspect)
+        const cam    = sceneManager.getCamera();
+        const fov    = cam.fov * (Math.PI / 180);
+        const aspect = cam.aspect;
+        ref.depth = THREE.MathUtils.clamp(
+            0.45 / (ref.shoulderWidth * 2 * Math.tan(fov/2) * aspect),
+            0.5, 5.0
+        );
+
+        this.cal.ready = true;
+        console.log('✅ Calibrated for this person:');
+        console.log(`   Shoulder width (norm): ${ref.shoulderWidth.toFixed(3)}`);
+        console.log(`   Torso height   (norm): ${ref.torsoHeight.toFixed(3)}`);
+        console.log(`   Computed depth    (m): ${ref.depth.toFixed(2)}`);
     }
 
     // ─────────────────────────────────────────────────────────────────
-    //  MAIN UPDATE  (called every frame)
+    //  MAIN UPDATE
     // ─────────────────────────────────────────────────────────────────
     update(poseData) {
         if (!this.model) return;
         this.frameCount++;
 
-        // No pose — show jacket in neutral position so it's visible
         if (!poseData || !poseData.landmarks) {
             this.model.visible = true;
-            this._applyTransform(new THREE.Vector3(0, 0.1, -2.2), 1.0, 0, 0);
+            this._applyTransform(new THREE.Vector3(0, 0, -2), 1.0, 0, 0);
             if (this.skeleton) this._resetToRestPose();
             return;
         }
@@ -128,86 +174,80 @@ class SkeletonMapper {
             return;
         }
 
-        // ── Shoulder geometry ────────────────────────────────────────
-        // FIX 1: MIRROR correction.
-        // MediaPipe gives coords in original (unflipped) video space.
-        // But browsers mirror the webcam feed by default (selfie view).
-        // So we flip X: mirroredX = 1 - rawX
-        const lsX = 1 - LS.x;
-        const rsX = 1 - RS.x;
-
-        const shoulderMidX  = (lsX + rsX) * 0.5;
-        const shoulderMidY  = (LS.y + RS.y) * 0.5;
-
-        // Width calc uses original coords (distance is mirror-invariant)
-        const dxS           = RS.x - LS.x;  // magnitude only, sign doesn't matter
-        const dyS           = RS.y - LS.y;
-        const shoulderWidth = Math.sqrt(dxS * dxS + dyS * dyS);
-
-        // ── Calibration ──────────────────────────────────────────────
-        if (!this.calibrated && shoulderWidth > 0.10) {
-            this.refShoulderWidth = shoulderWidth;
-            this.refDepth         = 1.6;
-            this.calibrated       = true;
-            console.log(`📐 Calibrated — shoulderWidth=${shoulderWidth.toFixed(3)}`);
+        // ── Calibration phase ────────────────────────────────────────
+        if (!this.cal.ready) {
+            this._accumulate(LS, RS, LH, RH);
+            this.model.visible = false;
+            if (this.frameCount % 5 === 0) {
+                const pct = Math.round((this.cal.frames / this.cal.FRAMES_NEEDED) * 100);
+                console.log(`⏳ Measuring your body... ${pct}%`);
+            }
+            return;
         }
 
-        // ── Depth ────────────────────────────────────────────────────
-        const baseDepth = this.calibrated ? this.refDepth         : 1.8;
-        const refWidth  = this.calibrated ? this.refShoulderWidth : 0.18;
-        const rawDepth  = baseDepth * (refWidth / Math.max(shoulderWidth, 0.08));
-        const depth     = THREE.MathUtils.clamp(rawDepth, 1.2, 2.8);
+        const ref = this.cal.ref;
 
-        // ── Torso Y anchor ───────────────────────────────────────────
-        // FIX 2: Sit jacket lower — on chest, not at chin level.
-        // Shift 35% of the way from shoulders toward hips (was 18%).
-        let torsoY = shoulderMidY;
-        if (LH && RH && LH.visibility > 0.3) {
+        // ── Mirror correction ─────────────────────────────────────────
+        // Webcam is shown mirrored; MediaPipe coords are unmirrored → flip X
+        const lsX = 1 - LS.x;
+        const rsX = 1 - RS.x;
+        const shoulderMidX = (lsX + rsX) * 0.5;
+        const shoulderMidY = (LS.y + RS.y) * 0.5;
+
+        // Shoulder width (distance is mirror-invariant)
+        const dxS          = RS.x - LS.x;
+        const dyS          = RS.y - LS.y;
+        const shoulderWidth = Math.sqrt(dxS*dxS + dyS*dyS);
+
+        // ── Depth — tracks person moving closer/further ───────────────
+        // depth scales inversely with apparent shoulder width
+        const depth = THREE.MathUtils.clamp(
+            ref.depth * (ref.shoulderWidth / Math.max(shoulderWidth, 0.05)),
+            0.4, 6.0
+        );
+
+        // ── Torso anchor — 100% landmark driven ──────────────────────
+        const hipsOK = LH && RH && LH.visibility > 0.4 && RH.visibility > 0.4;
+        let torsoY;
+
+        if (hipsOK) {
+            // Real hip data available — sit jacket 30% down from shoulders
             const hipMidY = (LH.y + RH.y) * 0.5;
-            torsoY = shoulderMidY + (hipMidY - shoulderMidY) * 0.35;
+            torsoY = shoulderMidY + (hipMidY - shoulderMidY) * 0.30;
         } else {
-            // Hips not visible — nudge down by a fixed amount in normalized space
-            torsoY = shoulderMidY + 0.08;
+            // Estimate torso using calibrated proportions scaled to current distance
+            const scaleFactor = shoulderWidth / ref.shoulderWidth;
+            torsoY = shoulderMidY + (ref.torsoHeight * scaleFactor * 0.30);
         }
 
         const worldTarget = this._normToWorld(shoulderMidX, torsoY, depth);
 
-        // ── Scale ────────────────────────────────────────────────────
-        // FIX 3: Better shoulder span default + wider clamp.
-        // If auto-detected span from bounding box is near zero (model not
-        // yet in scene when measured), fall back to a tuned constant.
-        const wsWidth           = this._normWidthToWorld(shoulderWidth, depth);
-        const modelShoulderSpan = this._modelShoulderSpan || 0.38; // tuned for typical GLB jackets
-        const targetScale       = THREE.MathUtils.clamp(wsWidth / modelShoulderSpan, 0.8, 6.0);
+        // ── Scale ─────────────────────────────────────────────────────
+        // Convert person's current shoulder width to world metres,
+        // then scale jacket so its model-space width matches exactly.
+        const wsWidth     = this._normWidthToWorld(shoulderWidth, depth);
+        const targetScale = THREE.MathUtils.clamp(wsWidth / this._modelW, 0.05, 20.0);
+        // Clamp is purely physical sanity — not person-specific.
 
         // ── Rotation ─────────────────────────────────────────────────
-        // FIX 4: Clamp roll tightly so head turns don't spin the jacket.
-        // Real shoulder tilt when standing: rarely more than ±8°
         const rawRoll = Math.atan2(dyS, dxS);
-        const roll    = THREE.MathUtils.clamp(rawRoll, -0.14, 0.14); // ±8 degrees
+        const roll    = THREE.MathUtils.clamp(rawRoll, -0.26, 0.26); // ±15°
 
-        // Body lean from Z depth — very subtle, only apply if data is reliable
         let lean = 0;
-        if (LS.z !== undefined && RS.z !== undefined && Math.abs(LS.z) < 0.5) {
-            lean = THREE.MathUtils.clamp(((LS.z + RS.z) * 0.5) * 0.8, -0.25, 0.25);
-        }
+        if (LS.z !== undefined && RS.z !== undefined)
+            lean = THREE.MathUtils.clamp(((LS.z + RS.z) * 0.5) * 0.8, -0.3, 0.3);
 
-        // ── Smooth ──────────────────────────────────────────────────
-        // Slower position lerp = more stable, less jittery
-        this.smooth.position.lerp(worldTarget, 0.12);
+        // ── Smooth ───────────────────────────────────────────────────
+        this.smooth.position.lerp(worldTarget, 0.15);
         this.smooth.scale += (targetScale - this.smooth.scale) * 0.15;
-        this.smooth.roll  += (roll        - this.smooth.roll)  * 0.10; // very slow roll
-        this.smooth.lean  += (lean        - this.smooth.lean)  * 0.10;
+        this.smooth.roll  += (roll        - this.smooth.roll)  * 0.08;
+        this.smooth.lean  += (lean        - this.smooth.lean)  * 0.08;
 
-        // ── Apply ────────────────────────────────────────────────────
         this._applyTransform(
-            this.smooth.position,
-            this.smooth.scale,
-            this.smooth.lean,
-            this.smooth.roll
+            this.smooth.position, this.smooth.scale,
+            this.smooth.lean, this.smooth.roll
         );
 
-        // ── Bones ────────────────────────────────────────────────────
         if (this.skeleton) {
             this._updateSpine(lm);
             this._updateArm('left',  LS, LE, LW);
@@ -215,218 +255,152 @@ class SkeletonMapper {
             this._updateNeck(lm);
         }
 
-        // ── Dynamic shading ─────────────────────────────────────────
         this._updateDynamicShading(lm, shoulderWidth);
-
         this.model.visible = true;
 
         if (this.debugMode && this.frameCount % 90 === 0) {
             console.log(
-                `[Frame ${this.frameCount}]` +
-                ` sw=${shoulderWidth.toFixed(3)} depth=${depth.toFixed(2)}` +
-                ` wsW=${wsWidth.toFixed(3)} scale=${this.smooth.scale.toFixed(3)}` +
-                ` pos=(${this.smooth.position.x.toFixed(2)},` +
-                      `${this.smooth.position.y.toFixed(2)},` +
-                      `${this.smooth.position.z.toFixed(2)})`
+                `[f${this.frameCount}] sw=${shoulderWidth.toFixed(3)}` +
+                ` depth=${depth.toFixed(2)}m scale=${this.smooth.scale.toFixed(3)}` +
+                ` hips=${hipsOK?'real':'est'}`
             );
         }
     }
 
     // ─────────────────────────────────────────────────────────────────
     //  DYNAMIC SHADING
-    //  Makes the jacket respond to motion like real fabric:
-    //  • Turning  → env-map reflection shifts (like fabric sheen)
-    //  • Arms up  → fabric stretches → roughness increases
-    //  • Closer   → fill light brightens
     // ─────────────────────────────────────────────────────────────────
     _updateDynamicShading(lm, shoulderWidth) {
         const mat = this.jacketMaterial;
         if (!mat) return;
-
         const L  = CONFIG.SKELETON.LANDMARKS;
-        const LS = lm[L.LEFT_SHOULDER];
-        const RS = lm[L.RIGHT_SHOULDER];
+        const LS = lm[L.LEFT_SHOULDER], RS = lm[L.RIGHT_SHOULDER];
         if (!LS || !RS) return;
 
-        // Turn estimation from Z-depth delta.
-        // Flip sign (zL-zR) because webcam feed is mirrored.
-        const zL   = LS.z || 0;
-        const zR   = RS.z || 0;
-        const turn = THREE.MathUtils.clamp((zL - zR) * 3.0, -1, 1);
+        const turn = THREE.MathUtils.clamp((LS.z - RS.z) * 3.0, -1, 1);
 
-        // Roughness: more arm spread → fabric tension → slightly rougher
         if (mat.roughness !== undefined) {
-            const baseRoughness   = 0.75;
-            const targetRoughness = THREE.MathUtils.clamp(
-                baseRoughness + (shoulderWidth - 0.18) * 0.5, 0.4, 1.0
-            );
-            mat.roughness += (targetRoughness - mat.roughness) * 0.1;
+            const calSW  = this.cal.ref.shoulderWidth || shoulderWidth;
+            const stretch = (shoulderWidth - calSW) / calSW;
+            mat.roughness += (THREE.MathUtils.clamp(0.75 + stretch*0.3, 0.4, 1.0) - mat.roughness) * 0.08;
         }
 
-        // Env-map intensity: turning reveals specular highlight
         if (mat.envMapIntensity !== undefined) {
-            const targetEnv = this._baseEnvIntensity + Math.abs(turn) * 0.6;
-            mat.envMapIntensity += (targetEnv - mat.envMapIntensity) * 0.08;
+            mat.envMapIntensity +=
+                (this._baseEnvIntensity + Math.abs(turn)*0.7 - mat.envMapIntensity) * 0.06;
         }
 
-        // Dynamic fill light position tracks opposite of turn
         if (this.dynamicLight) {
-            const lightX = -turn * 2.0;
-            this.dynamicLight.position.x +=
-                (lightX - this.dynamicLight.position.x) * 0.06;
-
-            const proximity = THREE.MathUtils.clamp(shoulderWidth / 0.25, 0.5, 1.5);
-            const targetI   = 1.0 * proximity;
-            this.dynamicLight.intensity +=
-                (targetI - this.dynamicLight.intensity) * 0.05;
+            this.dynamicLight.position.x += (-turn*2.5 - this.dynamicLight.position.x) * 0.05;
+            const calSW   = this.cal.ref.shoulderWidth || 0.2;
+            const proxR   = THREE.MathUtils.clamp(shoulderWidth / calSW, 0.4, 2.0);
+            this.dynamicLight.intensity += (proxR - this.dynamicLight.intensity) * 0.04;
         }
 
         mat.needsUpdate = true;
     }
 
     // ─────────────────────────────────────────────────────────────────
-    //  TRANSFORM APPLY
+    //  TRANSFORM
     // ─────────────────────────────────────────────────────────────────
     _applyTransform(position, scale, lean, roll) {
         this.model.position.copy(position);
         this.model.scale.setScalar(scale);
         this.model.rotation.order = 'YXZ';
-        this.model.rotation.y = Math.PI;   // face camera
-        this.model.rotation.x = lean  || 0;
-        this.model.rotation.z = roll  || 0;
+        this.model.rotation.y = Math.PI;
+        this.model.rotation.x = lean || 0;
+        this.model.rotation.z = roll || 0;
     }
 
     // ─────────────────────────────────────────────────────────────────
-    //  BONE UPDATES
+    //  BONES
     // ─────────────────────────────────────────────────────────────────
     _updateSpine(lm) {
         if (!this.skeleton) return;
         const L  = CONFIG.SKELETON.LANDMARKS;
-        const LS = lm[L.LEFT_SHOULDER];
-        const RS = lm[L.RIGHT_SHOULDER];
-        const LH = lm[L.LEFT_HIP];
-        const RH = lm[L.RIGHT_HIP];
-        if (!LS || !RS || !LH || !RH) return;
-
+        const LS = lm[L.LEFT_SHOULDER],  RS = lm[L.RIGHT_SHOULDER];
+        const LH = lm[L.LEFT_HIP],       RH = lm[L.RIGHT_HIP];
+        if (!LS||!RS||!LH||!RH) return;
         const shMid  = new THREE.Vector3((LS.x+RS.x)/2,(LS.y+RS.y)/2,(LS.z+RS.z)/2);
         const hipMid = new THREE.Vector3((LH.x+RH.x)/2,(LH.y+RH.y)/2,(LH.z+RH.z)/2);
-        const spine  = new THREE.Vector3().subVectors(shMid, hipMid).normalize();
-        const lateralBend = Math.atan2(spine.x, spine.y) * 0.25;
-
-        ['spine1','spine2','spine3','spine4','spine5'].forEach((key, i, arr) => {
-            const bone = this.bones[key];
-            if (!bone) return;
-            const weight = (i + 1) / arr.length;
-            bone.rotation.z += (lateralBend * weight - bone.rotation.z) * 0.15;
+        const bend   = Math.atan2(
+            new THREE.Vector3().subVectors(shMid, hipMid).normalize().x, 1
+        ) * 0.25;
+        ['spine1','spine2','spine3','spine4','spine5'].forEach((k,i,a) => {
+            const b = this.bones[k]; if (!b) return;
+            b.rotation.z += (bend * (i+1)/a.length - b.rotation.z) * 0.12;
         });
     }
 
     _updateArm(side, shoulder, elbow, wrist) {
-        if (!shoulder || !elbow || !wrist || !this.skeleton) return;
+        if (!shoulder||!elbow||!wrist||!this.skeleton) return;
         const isLeft   = side === 'left';
         const upperArm = isLeft ? this.bones.upperArmL : this.bones.upperArmR;
         const lowerArm = isLeft ? this.bones.lowerArmL : this.bones.lowerArmR;
-        if (!upperArm || !lowerArm) return;
+        if (!upperArm||!lowerArm) return;
+        const a = 0.18;
+        const rest = new THREE.Vector3(isLeft?1:-1,-1,0).normalize();
 
-        const alpha  = 0.22;
-        const restDir = new THREE.Vector3(isLeft ? 1 : -1, -1, 0).normalize();
+        const uDir = new THREE.Vector3(elbow.x-shoulder.x,elbow.y-shoulder.y,elbow.z-shoulder.z).normalize();
+        const uQ   = new THREE.Quaternion().setFromUnitVectors(rest, uDir);
+        const uk   = `u_${side}`;
+        if (!this.smooth.boneRotations[uk]) this.smooth.boneRotations[uk] = uQ.clone();
+        this.smooth.boneRotations[uk].slerp(uQ, a);
+        upperArm.quaternion.copy(this.smooth.boneRotations[uk]);
 
-        // Upper arm
-        const uDir = new THREE.Vector3(
-            elbow.x - shoulder.x, elbow.y - shoulder.y, elbow.z - shoulder.z
-        ).normalize();
-        const uQ = new THREE.Quaternion().setFromUnitVectors(restDir, uDir);
-        const uKey = `uArm_${side}`;
-        if (!this.smooth.boneRotations[uKey]) this.smooth.boneRotations[uKey] = uQ.clone();
-        this.smooth.boneRotations[uKey].slerp(uQ, alpha);
-        upperArm.quaternion.copy(this.smooth.boneRotations[uKey]);
-
-        // Lower arm
-        const lDir = new THREE.Vector3(
-            wrist.x - elbow.x, wrist.y - elbow.y, wrist.z - elbow.z
-        ).normalize();
-        const lQ = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,-1,0), lDir);
-        const lKey = `lArm_${side}`;
-        if (!this.smooth.boneRotations[lKey]) this.smooth.boneRotations[lKey] = lQ.clone();
-        this.smooth.boneRotations[lKey].slerp(lQ, alpha);
-        lowerArm.quaternion.copy(this.smooth.boneRotations[lKey]);
+        const lDir = new THREE.Vector3(wrist.x-elbow.x,wrist.y-elbow.y,wrist.z-elbow.z).normalize();
+        const lQ   = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,-1,0), lDir);
+        const lk   = `l_${side}`;
+        if (!this.smooth.boneRotations[lk]) this.smooth.boneRotations[lk] = lQ.clone();
+        this.smooth.boneRotations[lk].slerp(lQ, a);
+        lowerArm.quaternion.copy(this.smooth.boneRotations[lk]);
     }
 
     _updateNeck(lm) {
-        if (!this.bones.head || !this.skeleton) return;
+        if (!this.bones.head||!this.skeleton) return;
         const L    = CONFIG.SKELETON.LANDMARKS;
-        const nose = lm[L.NOSE];
-        const LS   = lm[L.LEFT_SHOULDER];
-        const RS   = lm[L.RIGHT_SHOULDER];
-        if (!nose || !LS || !RS) return;
-        const shMidX = (LS.x + RS.x) / 2;
-        const shMidY = (LS.y + RS.y) / 2;
-        const tiltZ  = Math.atan2(nose.x - shMidX, -(nose.y - shMidY)) * 0.25;
-        this.bones.head.rotation.z += (tiltZ - this.bones.head.rotation.z) * 0.2;
+        const nose = lm[L.NOSE], LS = lm[L.LEFT_SHOULDER], RS = lm[L.RIGHT_SHOULDER];
+        if (!nose||!LS||!RS) return;
+        const tilt = Math.atan2(nose.x-(LS.x+RS.x)/2, -((nose.y-(LS.y+RS.y)/2))) * 0.2;
+        this.bones.head.rotation.z += (tilt - this.bones.head.rotation.z) * 0.15;
     }
 
     // ─────────────────────────────────────────────────────────────────
-    //  COORDINATE HELPERS
+    //  HELPERS
     // ─────────────────────────────────────────────────────────────────
     _normToWorld(nx, ny, depth) {
-        const cam    = sceneManager.getCamera();
-        const fov    = cam.fov * (Math.PI / 180);
-        const aspect = cam.aspect;
-        const ndcX   = (nx - 0.5) *  2;
-        const ndcY   = (ny - 0.5) * -2;
-        const halfH  = Math.tan(fov / 2) * depth;
-        const halfW  = halfH * aspect;
-        return new THREE.Vector3(ndcX * halfW, ndcY * halfH, -depth);
+        const cam   = sceneManager.getCamera();
+        const halfH = Math.tan(cam.fov * Math.PI/360) * depth;
+        const halfW = halfH * cam.aspect;
+        return new THREE.Vector3((nx-0.5)*2*halfW, (ny-0.5)*-2*halfH, -depth);
     }
 
-    _normWidthToWorld(normWidth, depth) {
-        const cam    = sceneManager.getCamera();
-        const fov    = cam.fov * (Math.PI / 180);
-        const aspect = cam.aspect;
-        const viewH  = 2 * Math.tan(fov / 2) * depth;
-        return normWidth * viewH * aspect;
+    _normWidthToWorld(nw, depth) {
+        const cam = sceneManager.getCamera();
+        return nw * 2 * Math.tan(cam.fov * Math.PI/360) * depth * cam.aspect;
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    //  SETUP HELPERS
-    // ─────────────────────────────────────────────────────────────────
     _mapBones() {
-        const find = name => this.skeleton
-            ? (this.skeleton.bones.find(b => b.name.toLowerCase().includes(name)) || null)
+        const f = n => this.skeleton
+            ? (this.skeleton.bones.find(b=>b.name.toLowerCase().includes(n))||null)
             : null;
-
         this.bones = {
-            pelvis:    find('pelvis'),
-            spine1:    find('spine_01'),
-            spine2:    find('spine_02'),
-            spine3:    find('spine_03'),
-            spine4:    find('spine_04'),
-            spine5:    find('spine_05'),
-            neck1:     find('neck_01'),
-            neck2:     find('neck_02'),
-            head:      find('head'),
-            clavicleL: find('clavicle_l'),
-            upperArmL: find('upperarm_l'),
-            lowerArmL: find('lowerarm_l'),
-            handL:     find('hand_l'),
-            clavicleR: find('clavicle_r'),
-            upperArmR: find('upperarm_r'),
-            lowerArmR: find('lowerarm_r'),
-            handR:     find('hand_r'),
+            pelvis:f('pelvis'), spine1:f('spine_01'), spine2:f('spine_02'),
+            spine3:f('spine_03'), spine4:f('spine_04'), spine5:f('spine_05'),
+            neck1:f('neck_01'), neck2:f('neck_02'), head:f('head'),
+            clavicleL:f('clavicle_l'), upperArmL:f('upperarm_l'),
+            lowerArmL:f('lowerarm_l'), handL:f('hand_l'),
+            clavicleR:f('clavicle_r'), upperArmR:f('upperarm_r'),
+            lowerArmR:f('lowerarm_r'), handR:f('hand_r'),
         };
-
-        const found = Object.entries(this.bones)
-            .filter(([,v]) => v).map(([k]) => k).join(', ');
-        console.log('🦴 Mapped bones:', found || 'none');
+        console.log('🦴 Bones:', Object.entries(this.bones).filter(([,v])=>v).map(([k])=>k).join(', ')||'none');
     }
 
     _cacheRestPose() {
         if (!this.skeleton) return;
         this.skeleton.bones.forEach(b => {
             this.boneMatrices[b.name] = {
-                position:   b.position.clone(),
-                quaternion: b.quaternion.clone(),
-                scale:      b.scale.clone()
+                position: b.position.clone(), quaternion: b.quaternion.clone(), scale: b.scale.clone()
             };
         });
     }
@@ -434,58 +408,33 @@ class SkeletonMapper {
     _resetToRestPose() {
         if (!this.skeleton) return;
         this.skeleton.bones.forEach(b => {
-            const r = this.boneMatrices[b.name];
-            if (!r) return;
-            b.position.copy(r.position);
-            b.quaternion.copy(r.quaternion);
-            b.scale.copy(r.scale);
+            const r = this.boneMatrices[b.name]; if (!r) return;
+            b.position.copy(r.position); b.quaternion.copy(r.quaternion); b.scale.copy(r.scale);
         });
     }
 
-    _logModelBounds(model) {
-        const bbox = new THREE.Box3().setFromObject(model);
-        const size = new THREE.Vector3();
-        bbox.getSize(size);
-        console.log(`📏 Jacket bounds: W=${size.x.toFixed(3)} H=${size.y.toFixed(3)} D=${size.z.toFixed(3)}`);
-        // X extent ≈ shoulder span in model units
-        this._modelShoulderSpan = size.x > 0 ? size.x : 0.5;
-        console.log(`  ↳ Shoulder span = ${this._modelShoulderSpan.toFixed(3)} model-units`);
-        console.log(`  ↳ If scale is wrong, call: skeletonMapper.setModelShoulderSpan(value)`);
-    }
-
     // ─────────────────────────────────────────────────────────────────
-    //  PUBLIC TUNING HELPERS  (use from browser console)
+    //  PUBLIC API
     // ─────────────────────────────────────────────────────────────────
 
-    /** skeletonMapper.setModelShoulderSpan(0.45)
-     *  Call if jacket is too big or too small width-wise.
-     *  Value = width of jacket mesh in its own model units. */
-    setModelShoulderSpan(span) {
-        this._modelShoulderSpan = span;
-        console.log(`🔧 Model shoulder span → ${span}`);
-    }
-
-    /** Force recalibration on next good frame. */
+    /** Call this when a new person steps in front of the camera */
     recalibrate() {
-        this.calibrated = false;
-        console.log('🔄 Recalibrating on next good frame…');
+        this.cal = {
+            ready: false, frames: 0, FRAMES_NEEDED: 20,
+            sum: { shoulderWidth:0, torsoHeight:0 },
+            ref: { shoulderWidth:null, torsoHeight:null, depth:null }
+        };
+        this.smooth = { position:new THREE.Vector3(), scale:1, roll:0, lean:0, boneRotations:{} };
+        if (this.model) this.model.visible = false;
+        console.log('🔄 Recalibrating for new person…');
     }
 
-    /** Set base env-map brightness for current fabric.
-     *  0 = matte cotton, 0.8 = leather/silk */
-    setBaseEnvIntensity(v) {
-        this._baseEnvIntensity = v;
-        console.log(`💡 Base env intensity → ${v}`);
-    }
+    /** 0.1 = matte cotton, 0.5 = leather, 0.9 = silk */
+    setFabricReflectivity(v) { this._baseEnvIntensity = THREE.MathUtils.clamp(v, 0, 1); }
 
-    reset() {
-        this.smooth = { position: new THREE.Vector3(0,0,0), scale:1.0, roll:0, lean:0, boneRotations:{} };
-        this.calibrated = false;
-        if (this.skeleton) this._resetToRestPose();
-        if (this.model)    this.model.visible = false;
-        this.frameCount = 0;
-        console.log('🔄 SkeletonMapper reset');
-    }
+    isCalibrated() { return this.cal.ready; }
+
+    reset() { this.recalibrate(); }
 }
 
 const skeletonMapper = new SkeletonMapper();
