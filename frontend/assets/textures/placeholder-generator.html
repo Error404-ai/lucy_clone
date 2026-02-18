@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Texture Placeholder Generator</title>
+</head>
+<body>
+    <h1>Generating placeholder textures...</h1>
+    <div id="status"></div>
+    <script>
+        // Generate placeholder textures
+        const textures = [
+            { name: 'denim_blue', color: '#4169E1', pattern: 'weave' },
+            { name: 'leather_black', color: '#1a1a1a', pattern: 'grain' },
+            { name: 'cotton_grey', color: '#808080', pattern: 'plain' },
+            { name: 'wool_navy', color: '#000080', pattern: 'weave' },
+            { name: 'silk_champagne', color: '#F7E7CE', pattern: 'smooth' },
+            { name: 'polyester_red', color: '#DC143C', pattern: 'plain' }
+        ];
+
+        const types = ['diffuse', 'normal', 'roughness', 'thumb'];
+
+        function createTexture(name, color, type, size) {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            if (type === 'diffuse' || type === 'thumb') {
+                // Solid color
+                ctx.fillStyle = color;
+                ctx.fillRect(0, 0, size, size);
+            } else if (type === 'normal') {
+                // Neutral normal map (128, 128, 255)
+                ctx.fillStyle = '#8080ff';
+                ctx.fillRect(0, 0, size, size);
+            } else if (type === 'roughness') {
+                // Mid-gray roughness
+                ctx.fillStyle = '#808080';
+                ctx.fillRect(0, 0, size, size);
+            }
+
+            return canvas.toDataURL('image/jpeg', 0.9);
+        }
+
+        // Generate and download textures
+        textures.forEach(({ name, color }) => {
+            types.forEach(type => {
+                const size = type === 'thumb' ? 128 : 512;
+                const dataUrl = createTexture(name, color, type, size);
+                
+                // Create download link
+                const a = document.createElement('a');
+                a.href = dataUrl;
+                a.download = `${name}_${type}.jpg`;
+                a.click();
+                
+                document.getElementById('status').innerHTML += `<p>Generated: ${a.download}</p>`;
+            });
+        });
+
+        document.getElementById('status').innerHTML += '<p><strong>All textures generated! Save them to the textures folder.</strong></p>';
+    </script>
+</body>
+</html>
