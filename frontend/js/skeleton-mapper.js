@@ -179,8 +179,8 @@ class SkeletonMapper {
         /* ==================== POSITION ==================== */
         
         // Torso center (between shoulders and hips)
-        const centerX = (LS.x + RS.x + LH.x + RH.x) / 4;
-        const centerY = (LS.y + RS.y + LH.y + RH.y) / 4;
+        const centerX = (LS.x + RS.x) * 0.5;
+const centerY = (LS.y + RS.y) * 0.5 + 0.05; 
 
         // Calculate shoulder width
         const dx = RS.x - LS.x;
@@ -203,25 +203,25 @@ class SkeletonMapper {
         const BASE_DEPTH = 1.8;         // Closer to camera than before (was 2.5)
         
         // Calculate depth inversely proportional to shoulder width
-        const depth = BASE_DEPTH * (REFERENCE_WIDTH / Math.max(shoulderWidth, 0.05));
-        const clampedDepth = THREE.MathUtils.clamp(depth, 1.2, 2.8);
+        const depth = BASE_DEPTH * (REFERENCE_WIDTH / Math.max(shoulderWidth, 0.12));
+        const clampedDepth = THREE.MathUtils.clamp(depth, 1.4, 2.2);
 
         // Convert to world space
         const worldPos = this.normalizedToWorld(centerX, centerY, clampedDepth);
 
         // Smooth position
-        this.smooth.position.lerp(worldPos, 0.3);
+        this.smooth.position.lerp(worldPos, 0.18);
         this.model.position.copy(this.smooth.position);
 
         /* ==================== SCALE ==================== */
         
         // 🔧 FIX: Much more aggressive scaling
         // The jacket needs to be MUCH bigger than before
-        const BASE_SCALE = 8.0;  // Increased from 2.5
+        const BASE_SCALE = 6.5;
         const targetScale = shoulderWidth * BASE_SCALE;
         
         // Allow much larger range
-        const clampedScale = THREE.MathUtils.clamp(targetScale, 1.0, 4.0);
+        const clampedScale = THREE.MathUtils.clamp(targetScale, 1.2, 3.2);
 
         // Smooth scale changes
         this.smooth.scale += (clampedScale - this.smooth.scale) * 0.25;
