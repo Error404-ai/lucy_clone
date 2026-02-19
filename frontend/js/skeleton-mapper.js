@@ -79,12 +79,15 @@ class SkeletonMapper {
         model.visible = false;
 
         // Measure jacket geometry — used for scaling, not person-specific
-        const bbox = new THREE.Box3().setFromObject(model);
-        const size = new THREE.Vector3();
-        bbox.getSize(size);
-        this._modelW = size.x > 0 ? size.x : 1.0;
-        this._modelH = size.y > 0 ? size.y : 1.0;
-        console.log(`📏 Jacket model: W=${size.x.toFixed(3)} H=${size.y.toFixed(3)}`);
+   // Find where the shoulders are relative to model origin
+const bbox = new THREE.Box3().setFromObject(model);
+const modelTop = bbox.max.y;
+const modelBottom = bbox.min.y;
+const modelHeight = modelTop - modelBottom;
+
+// Jacket "shoulder line" is typically ~85% up from bottom
+this._jacketShoulderOffsetY = modelBottom + modelHeight * 0.85;
+console.log("📏 Jacket shoulder Y offset:", this._jacketShoulderOffsetY);
     }
 
     setDynamicLight(light) { this.dynamicLight = light; }
@@ -304,6 +307,9 @@ class SkeletonMapper {
     //  TRANSFORM
     // ─────────────────────────────────────────────────────────────────
     _applyTransform(position, scale, lean, roll) {
+            const offset = new THREE.Vector3(0, -this._jacketShoulderOffsetY * scale, 0);
+    this.model.position.copy(position).add(offset);
+    this.model.scale.setScalar(scale);
         this.model.position.copy(position);
         this.model.scale.setScalar(scale);
         this.model.rotation.order = 'YXZ';
@@ -395,6 +401,30 @@ class SkeletonMapper {
         };
         console.log('🦴 Bones:', Object.entries(this.bones).filter(([,v])=>v).map(([k])=>k).join(', ')||'none');
     }
+
+    _measureJacketShoulderWidth() {
+    // If bones exist, measure shoulder-to-shoulder distance directly
+    const L = this.bones.clavicleL || this.bones.upperArmL;
+    const R = this.bones.clavicleR || this.bones.upperArmR;
+
+    if (L && R) {
+        // Get world positions of left/right shoulder bones
+        const posL = new THREE.Vector3();
+        const posR = new THREE.Vector3();
+        L.getWorldPosition(posL);
+        R.getWorldPosition(posR);
+        const boneW = posL.distanceTo(posR);
+        console.log("📏 Jacket shoulder width (from bones):", boneW);
+        if (boneW > 0.001) return boneW;
+    }
+
+    // Fallback: use bounding box but add a correction hint
+    const bbox = new THREE.Box3().setFromObject(this.model);
+    const size = new THREE.Vector3();
+    bbox.getSize(size);
+    console.warn("⚠️ Using bbox width:", size.x, "— set MODEL_UNIT_SCALE in config if jacket is wrong size");
+    return size.x * CONFIG.JACKET.MODEL_UNIT_SCALE; // see below
+}
 
     _cacheRestPose() {
         if (!this.skeleton) return;
