@@ -1,63 +1,59 @@
+// materials.js — MOBILE + DESKTOP SAFE
+// Key change: calls skeletonMapper.onFabricApplied() after material is set,
+// which tells the mapper it's safe to show the jacket now.
+
 class MaterialsManager {
     constructor() {
         this.currentMaterial = null;
-        this.currentFabric = null;
+        this.currentFabric   = null;
         this.defaultMaterial = null;
     }
 
     init() {
-        // Create default material with NO depth testing
         this.defaultMaterial = new THREE.MeshStandardMaterial({
-            color: 0x1a1a1a,
-            roughness: 0.7,
-            metalness: 0.1,
-            side: THREE.DoubleSide,
-            depthTest: false,  // ✅ CRITICAL
-            depthWrite: false, // ✅ CRITICAL
+            color:      0x1a1a1a,
+            roughness:  0.7,
+            metalness:  0.1,
+            side:       THREE.DoubleSide,
+            depthTest:  false,
+            depthWrite: false,
             transparent: false,
-            opacity: 1.0
+            opacity:    1.0
         });
-
-        console.log('✅ Materials manager initialized (NO DEPTH TEST)');
+        console.log('✅ Materials manager initialized');
     }
 
     async applyFabric(fabricData) {
         try {
             console.log('🎨 Applying fabric:', fabricData.name);
 
-            const model = modelLoader.getModel();
+            const model       = modelLoader.getModel();
+            const jacketMeshes = modelLoader.getMeshes();
+
             if (!model) {
-                console.error('❌ Model not loaded');
+                console.error('❌ Model not loaded yet');
                 return false;
             }
-
-            const jacketMeshes = modelLoader.getMeshes();
             if (!jacketMeshes || jacketMeshes.length === 0) {
                 console.error('❌ No jacket meshes found');
                 return false;
             }
 
-            // Create material
-            const colorValue = typeof fabricData.color === 'string' 
-                ? fabricData.color 
+            const colorValue = typeof fabricData.color === 'string'
+                ? fabricData.color
                 : '#808080';
 
             const newMaterial = new THREE.MeshStandardMaterial({
-                color: colorValue,
-                roughness: fabricData.roughness ?? 0.7,
-                metalness: fabricData.metalness ?? 0.1,
-                side: THREE.DoubleSide,
-                
-                // ✅ ULTIMATE FIX: Remove ALL depth testing
-                depthTest: false,   // Don't check if behind other objects
-                depthWrite: false,  // Don't write to depth buffer
+                color:       colorValue,
+                roughness:   fabricData.roughness  ?? 0.7,
+                metalness:   fabricData.metalness  ?? 0.1,
+                side:        THREE.DoubleSide,
+                depthTest:   false,
+                depthWrite:  false,
                 transparent: false,
-                opacity: 1.0
+                opacity:     1.0
             });
 
-            console.log('✅ Created NO-DEPTH material:', colorValue);
-
-            // Apply to all jacket meshes
             let appliedCount = 0;
 
             for (const mesh of jacketMeshes) {
@@ -65,32 +61,25 @@ class MaterialsManager {
 
                 try {
                     const oldMaterial = mesh.material;
-
                     mesh.material = newMaterial.clone();
-                    
-                    // ✅ FORCE rendering on top of everything
-                    mesh.renderOrder = 9999;
-                    mesh.frustumCulled = false;
-                    mesh.visible = true;
-                    mesh.castShadow = false;
-                    mesh.receiveShadow = false;
-                    
-                    // Double-check material settings
-                    mesh.material.depthTest = false;
+
+                    // Force render on top of everything including the video plane
+                    mesh.renderOrder     = 9999;
+                    mesh.frustumCulled   = false;
+                    mesh.visible         = true;
+                    mesh.castShadow      = false;
+                    mesh.receiveShadow   = false;
+
+                    mesh.material.depthTest  = false;
                     mesh.material.depthWrite = false;
-                    mesh.material.side = THREE.DoubleSide;
+                    mesh.material.side       = THREE.DoubleSide;
                     mesh.material.needsUpdate = true;
 
                     appliedCount++;
-                    console.log(`✅ Applied NO-DEPTH material to: "${mesh.name}"`);
 
-                    // Dispose old material
                     if (oldMaterial && oldMaterial !== this.defaultMaterial) {
-                        try {
-                            oldMaterial.dispose();
-                        } catch (e) {}
+                        try { oldMaterial.dispose(); } catch (e) {}
                     }
-
                 } catch (meshError) {
                     console.error(`❌ Failed on mesh "${mesh.name}":`, meshError);
                 }
@@ -98,18 +87,23 @@ class MaterialsManager {
 
             if (appliedCount > 0) {
                 this.currentMaterial = newMaterial;
-                this.currentFabric = fabricData;
+                this.currentFabric   = fabricData;
 
-                // Make model visible
+                // Make jacket group visible
                 modelLoader.setVisible(true);
 
-                console.log(`✅ Fabric applied to ${appliedCount} mesh(es)`);
-                console.log('📊 Render order: Video(-1000) → Jacket(9999 NO DEPTH)');
+                // ── CRITICAL: tell skeleton mapper it can now show the jacket ──
+                // Without this, the jacket stays invisible until pose is detected,
+                // which on mobile can take a long time or never happen if the
+                // person is too close to the camera.
+                if (typeof skeletonMapper !== 'undefined' && skeletonMapper.onFabricApplied) {
+                    skeletonMapper.onFabricApplied();
+                }
 
-                // Force render
-                try {
-                    sceneManager.render();
-                } catch (e) {}
+                console.log(`✅ Fabric "${fabricData.name}" applied to ${appliedCount} mesh(es)`);
+
+                // Force a render to make it immediately visible
+                try { sceneManager.render(); } catch (e) {}
 
                 return true;
             }
@@ -123,9 +117,7 @@ class MaterialsManager {
         }
     }
 
-    getCurrentFabric() {
-        return this.currentFabric;
-    }
+    getCurrentFabric() { return this.currentFabric; }
 
     reset() {
         try {
