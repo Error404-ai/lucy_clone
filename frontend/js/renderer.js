@@ -1,6 +1,7 @@
-// Composite Renderer — FIXED
-// Key fix: mirror the video plane horizontally so user sees selfie view,
-// matching the mirrored X coords we apply in skeleton-mapper.js
+// renderer.js — MOBILE + DESKTOP SAFE
+// Key change: reads --bar-h and --panel-h CSS vars so renderer sizing
+// is always in sync with the CSS layout, on every screen size.
+// No hardcoded pixel values for layout math.
 
 class CompositeRenderer {
     constructor() {
@@ -18,29 +19,65 @@ class CompositeRenderer {
         this.fpsHistorySize = 10;
     }
 
+    // ─── Read computed layout values from CSS custom properties ──────────────
+    // This is the key to keeping JS and CSS in sync on every screen size.
+    // Changing --bar-h or --panel-h in CSS automatically updates renderer sizing.
+    _getLayoutMeasurements() {
+        const style = getComputedStyle(document.documentElement);
+
+        const parseVar = (name, fallback) => {
+            const raw = style.getPropertyValue(name).trim();
+            const px  = parseFloat(raw);
+            return isNaN(px) ? fallback : px;
+        };
+
+        return {
+            barH:    parseVar('--bar-h',    60),
+            panelH:  parseVar('--panel-h',  200),
+            safeTop: parseVar('--safe-top', 0),
+            safeBot: parseVar('--safe-bottom', 0),
+        };
+    }
+
+    // ─── Get the true available canvas area ──────────────────────────────────
+    // Uses dvh when available (matches CSS), falls back to vh.
+    // This avoids a gap between the canvas and the fabric panel on mobile
+    // caused by browser chrome (URL bar) changing the visible viewport.
+    _getCanvasDisplaySize() {
+        const { barH, panelH, safeTop, safeBot } = this._getLayoutMeasurements();
+
+        const vhPx = window.innerHeight; // always the CSS viewport height
+        const usedH = barH + panelH + safeTop + safeBot;
+        const canvasH = Math.max(vhPx - usedH, 100); // never collapse to 0
+
+        return {
+            width:  window.innerWidth,
+            height: canvasH,
+        };
+    }
+
     init(width, height) {
         try {
             console.log('🎬 Initializing Renderer...');
 
-            this.width = width;
-            this.height = height;
+            // Use actual display dimensions, not the video dimensions passed in,
+            // for canvas layout. Video dimensions are only for texture/aspect.
+            this._videoW = width;
+            this._videoH = height;
 
-            this.canvas.style.position = 'fixed';
-            this.canvas.style.top = '0';
-            this.canvas.style.left = '0';
-            this.canvas.style.width = '100vw';
-            this.canvas.style.height = '100vh';
-
-            const scale = CONFIG.PERFORMANCE.RENDER_SCALE;
-            const displayWidth  = this.canvas.clientWidth  || window.innerWidth;
-            const displayHeight = this.canvas.clientHeight || window.innerHeight;
-
-            this.canvas.width  = displayWidth  * scale;
-            this.canvas.height = displayHeight * scale;
+            // Size the canvas to fill the correct viewport area
+            this._applyCanvasSize();
 
             this.setupVideoBackground();
 
             window.addEventListener('resize', Utils.debounce(() => this.onResize(), 250));
+
+            // On mobile, the browser fires visualViewport resize when the
+            // URL bar appears/disappears. Handle it so canvas doesn't gap.
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize',
+                    Utils.debounce(() => this.onResize(), 100));
+            }
 
             console.log('✅ Renderer initialized');
 
@@ -48,6 +85,45 @@ class CompositeRenderer {
             console.error('❌ Renderer init failed:', error);
             throw error;
         }
+    }
+
+    // ─── Apply canvas display + buffer size ──────────────────────────────────
+    _applyCanvasSize() {
+        const { width, height } = this._getCanvasDisplaySize();
+        const scale = CONFIG.PERFORMANCE.RENDER_SCALE;
+        const dpr   = Math.min(window.devicePixelRatio || 1, 2);
+
+        // CSS display size — the canvas element's visible area
+        this.canvas.style.position = 'fixed';
+        this.canvas.style.top      = '0';
+        this.canvas.style.left     = '0';
+        this.canvas.style.width    = '100vw';
+        this.canvas.style.height   = height + 'px';
+        // Note: canvas top offset is handled by CSS (#main-canvas { top: ... })
+        // We only set height here so Three.js renderer matches.
+
+        // WebGL buffer size — higher resolution for sharp rendering
+        const bufferW = Math.floor(window.innerWidth  * dpr * scale);
+        const bufferH = Math.floor(height * dpr * scale);
+
+        this.canvas.width  = bufferW;
+        this.canvas.height = bufferH;
+
+        // Sync Three.js renderer
+        const renderer = sceneManager.getRenderer();
+        if (renderer) {
+            renderer.setSize(window.innerWidth, height);
+            renderer.setPixelRatio(Math.min(dpr, 2));
+        }
+
+        // Sync camera aspect
+        const camera = sceneManager.getCamera();
+        if (camera) {
+            camera.aspect = window.innerWidth / height;
+            camera.updateProjectionMatrix();
+        }
+
+        console.log(`📐 Canvas: display=${window.innerWidth}x${height} buffer=${bufferW}x${bufferH}`);
     }
 
     setupVideoBackground() {
@@ -73,23 +149,34 @@ class CompositeRenderer {
         this.videoTexture.format    = THREE.RGBAFormat;
         this.videoTexture.colorSpace = THREE.SRGBColorSpace;
 
-        // FIX: Mirror the texture horizontally so user sees selfie view.
-        // Without this, the video is unmirrored but the jacket coords ARE
-        // mirrored (via 1-x in skeleton-mapper) → they won't match visually.
-        this.videoTexture.repeat.set(-1, 1);   // flip U axis
-        this.videoTexture.offset.set(1, 0);    // shift back into 0-1 range
+        // Mirror the texture horizontally so user sees selfie view.
+        this.videoTexture.repeat.set(-1, 1);
+        this.videoTexture.offset.set(1, 0);
 
+        this._createVideoPlane(video);
+    }
+
+    _createVideoPlane(video) {
         const camera = sceneManager.getCamera();
         const scene  = sceneManager.getScene();
 
-        const videoAspect  = video.videoWidth / video.videoHeight;
+        if (this.videoPlane) {
+            scene.remove(this.videoPlane);
+            this.videoPlane.geometry.dispose();
+            this.videoPlane.material.dispose();
+            this.videoPlane = null;
+        }
+
+        const vW = video.videoWidth  || this._videoW;
+        const vH = video.videoHeight || this._videoH;
+
+        const videoAspect  = vW / vH;
         const cameraAspect = camera.aspect;
-
-        console.log(`📹 Video aspect: ${videoAspect.toFixed(2)} (${video.videoWidth}x${video.videoHeight})`);
-        console.log(`📷 Camera aspect: ${cameraAspect.toFixed(2)}`);
-
         const distance = 10;
         const vFOV = camera.fov * Math.PI / 180;
+
+        console.log(`📹 Video: ${vW}x${vH} (aspect ${videoAspect.toFixed(2)})`);
+        console.log(`📷 Camera aspect: ${cameraAspect.toFixed(2)}`);
 
         let planeHeight, planeWidth;
         if (videoAspect > cameraAspect) {
@@ -105,7 +192,7 @@ class CompositeRenderer {
 
         const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
         const material = new THREE.MeshBasicMaterial({
-            map:       this.videoTexture,
+            map:        this.videoTexture,
             depthWrite: false,
             depthTest:  false,
             toneMapped: false,
@@ -121,34 +208,12 @@ class CompositeRenderer {
     }
 
     updateVideoPlaneSize() {
-        if (!this.videoPlane) return;
         const video = cameraManager.video;
-        if (!video || video.videoWidth === 0) return;
-
-        const camera       = sceneManager.getCamera();
-        const videoAspect  = video.videoWidth / video.videoHeight;
-        const cameraAspect = camera.aspect;
-        const distance     = 10;
-        const vFOV         = camera.fov * Math.PI / 180;
-
-        let planeHeight, planeWidth;
-        if (videoAspect > cameraAspect) {
-            planeHeight = 2 * Math.tan(vFOV / 2) * distance;
-            planeWidth  = planeHeight * videoAspect;
-        } else {
-            const basePlaneHeight = 2 * Math.tan(vFOV / 2) * distance;
-            planeWidth  = basePlaneHeight * cameraAspect;
-            planeHeight = planeWidth / videoAspect;
-        }
-
-        this.videoPlane.geometry.dispose();
-        this.videoPlane.geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
-        console.log(`📐 Video plane resized: ${planeWidth.toFixed(2)} x ${planeHeight.toFixed(2)}`);
+        if (!video || !this.videoTexture) return;
+        this._createVideoPlane(video);
     }
 
-    // Convert normalized screen coords (0-1) to 3D world position.
-    // NOTE: skeleton-mapper has its own _normToWorld(); use that for jacket placement.
-    // This helper is kept for other uses (e.g. UI overlays).
+    // ─── World position helper ────────────────────────────────────────────────
     getWorldPositionFromScreen(nx, ny, depth = 2.5) {
         const camera = sceneManager.getCamera();
         const fov    = camera.fov * (Math.PI / 180);
@@ -226,7 +291,9 @@ class CompositeRenderer {
             const instantFps = Math.round((this.frameCount * 1000) / elapsed);
             this.fpsHistory.push(instantFps);
             if (this.fpsHistory.length > this.fpsHistorySize) this.fpsHistory.shift();
-            this.fps = Math.round(this.fpsHistory.reduce((a, b) => a + b, 0) / this.fpsHistory.length);
+            this.fps = Math.round(
+                this.fpsHistory.reduce((a, b) => a + b, 0) / this.fpsHistory.length
+            );
             Utils.updateFPS(this.fps);
             this.frameCount = 0;
             this.lastFpsUpdate = now;
@@ -234,27 +301,12 @@ class CompositeRenderer {
     }
 
     onResize() {
-        const displayWidth  = this.canvas.clientWidth  || window.innerWidth;
-        const displayHeight = this.canvas.clientHeight || window.innerHeight;
-        const scale         = CONFIG.PERFORMANCE.RENDER_SCALE;
-
-        this.canvas.width  = displayWidth  * scale;
-        this.canvas.height = displayHeight * scale;
-
-        const renderer = sceneManager.getRenderer();
-        if (renderer) renderer.setSize(displayWidth, displayHeight);
-
-        const camera = sceneManager.getCamera();
-        if (camera) {
-            camera.aspect = displayWidth / displayHeight;
-            camera.updateProjectionMatrix();
-        }
-
+        console.log('🔄 Resize detected — recalculating layout');
+        this._applyCanvasSize();
         this.updateVideoPlaneSize();
-        console.log(`📐 Resized: ${displayWidth}x${displayHeight}`);
     }
 
-    getFPS()  { return this.fps; }
+    getFPS() { return this.fps; }
 
     dispose() {
         this.stop();
