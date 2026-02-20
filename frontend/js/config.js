@@ -21,7 +21,7 @@ const CONFIG = {
 
     /* ---------------- JACKET ---------------- */
     JACKET: {
-        MODEL_PATH: 'assets/models/16_Jacket.glb',
+        MODEL_PATH: 'assets/models/18_Jacket.glb',
 
         // ─── MODEL_UNIT_SCALE ───────────────────────────────────────────────
         // Fix if jacket appears massively too big or too small.
@@ -35,7 +35,7 @@ const CONFIG = {
         //
         // Tip: if the jacket covers your entire screen, try 0.01.
         //      if the jacket is a tiny dot, try 100.
-        MODEL_UNIT_SCALE: 0.02,
+        MODEL_UNIT_SCALE: 1.0,
 
         ROTATION: { x: 0, y: Math.PI, z: 0 },
         SCALE: 0.5,
