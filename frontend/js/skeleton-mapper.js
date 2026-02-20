@@ -214,7 +214,7 @@ class SkeletonMapper {
         // Scale: jacket shoulder width matches person shoulder width
         const wsWidth          = this._normWidthToWorld(shoulderWidth, depth);
         const unitScale        = CONFIG.JACKET.MODEL_UNIT_SCALE || 1.0;
-        const jacketShoulderW  = this._modelW * unitScale * 0.85; // ~85% of bbox is shoulder span
+        const jacketShoulderW = this._modelW * unitScale * 0.60;  // ~85% of bbox is shoulder span
         const targetScale      = THREE.MathUtils.clamp(
             wsWidth / Math.max(jacketShoulderW, 0.0001),
             0.001, 500.0

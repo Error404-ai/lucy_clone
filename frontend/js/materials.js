@@ -44,15 +44,15 @@ class MaterialsManager {
                 : '#808080';
 
             const newMaterial = new THREE.MeshStandardMaterial({
-                color:       colorValue,
-                roughness:   fabricData.roughness  ?? 0.7,
-                metalness:   fabricData.metalness  ?? 0.1,
-                side:        THREE.DoubleSide,
-                depthTest:   false,
-                depthWrite:  false,
-                transparent: false,
-                opacity:     1.0
-            });
+    color:       colorValue,
+    roughness:   fabricData.roughness  ?? 0.7,
+    metalness:   fabricData.metalness  ?? 0.1,
+    side:        THREE.FrontSide,        // was DoubleSide
+    depthTest:   true,                   // was false — CRITICAL fix
+    depthWrite:  true,                   // was false — CRITICAL fix
+    transparent: false,
+    opacity:     1.0
+});
 
             let appliedCount = 0;
 
@@ -64,14 +64,12 @@ class MaterialsManager {
                     mesh.material = newMaterial.clone();
 
                     // Force render on top of everything including the video plane
-                    mesh.renderOrder     = 9999;
+                    mesh.renderOrder     = 1;
                     mesh.frustumCulled   = false;
                     mesh.visible         = true;
                     mesh.castShadow      = false;
                     mesh.receiveShadow   = false;
 
-                    mesh.material.depthTest  = false;
-                    mesh.material.depthWrite = false;
                     mesh.material.side       = THREE.DoubleSide;
                     mesh.material.needsUpdate = true;
 
