@@ -21,7 +21,7 @@ const CONFIG = {
 
     /* ---------------- JACKET ---------------- */
     JACKET: {
-        MODEL_PATH: 'assets/models/18_Jacket.glb',
+        MODEL_PATH: 'assets/models/16_Jacket.glb',
 
         // ─── MODEL_UNIT_SCALE ───────────────────────────────────────────────
         // Fix if jacket appears massively too big or too small.
