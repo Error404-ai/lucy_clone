@@ -1,33 +1,20 @@
 // skeleton-mapper.js — COMBINED RIG VERSION (shoulder-anchored + PoseRetargeter)
-//
-// Responsibilities:
-//   1. Receive MediaPipe pose landmarks from app.js → update()
-//   2. Compute where the jacket group ROOT should be positioned (skeleton root = hips)
-//   3. Compute overall scale from shoulder width vs calibration
-//   4. Delegate per-bone rotation to PoseRetargeter
-//   5. Apply dynamic shading (roughness / env map tweaks per pose)
-//
-// COORDINATE SYSTEM
-// ──────────────────
-// MediaPipe:  x[0→1] left→right, y[0→1] top→bottom, z rough depth
-// THREE.js:   x left→right, y bottom→top, z toward viewer
-// Camera:     front-facing → MediaPipe x is MIRRORED (poseRetargeter handles this)
+// Key fix: uses VIDEO aspect ratio (1.778) not canvas aspect (3.66+) for all
+// coordinate conversions. MediaPipe landmarks are normalized to video dimensions.
 
 class SkeletonMapper {
     constructor() {
-        this.model         = null;
-        this.jacketMeshes  = [];
+        this.model          = null;
+        this.jacketMeshes   = [];
         this.jacketMaterial = null;
 
-        // Smooth state (all values lerp each frame)
         this.smooth = {
             position: new THREE.Vector3(0, 0, 0),
             scale:    1.0,
-            roll:     0,    // shoulder tilt Z
-            lean:     0,    // forward lean X
+            roll:     0,
+            lean:     0,
         };
 
-        // Calibration: measure the person's proportions over N frames
         this.cal = {
             ready:         false,
             frames:        0,
@@ -39,21 +26,17 @@ class SkeletonMapper {
             }
         };
 
-        // Jacket geometry measurements (set in setJacket)
-        this._modelW          = 1.0;   // jacket bounding-box width  (model units)
-        this._modelH          = 1.0;   // jacket bounding-box height (model units)
-        this._shoulderSeamY   = 0.0;   // local-space Y of shoulder seam
+        this._modelW        = 1.0;
+        this._modelH        = 1.0;
+        this._shoulderSeamY = 0.0;
 
-        // Dynamic shading
         this._baseEnvIntensity = 0.4;
         this.dynamicLight      = null;
 
-        // Flags
         this._fabricReady = false;
         this.frameCount   = 0;
         this.initialized  = false;
 
-        // Debug: log pose data every N frames
         this._DEBUG_INTERVAL = 90;
     }
 
@@ -68,13 +51,30 @@ class SkeletonMapper {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // VIDEO ASPECT — THE KEY FIX
+    // MediaPipe gives landmarks normalised to video frame (e.g. 1280×720 = 1.778).
+    // The THREE.js canvas can be much wider (aspect 3.66 on a wide monitor with
+    // the fabric panel taking vertical space). Using canvas aspect inflates every
+    // world-space width calculation by ~2×, making scale=5+ and the jacket huge.
+    // Always use VIDEO aspect for MediaPipe → world-space conversions.
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    _getVideoAspect() {
+        const dims = cameraManager.getDimensions();
+        if (dims && dims.width && dims.height) {
+            return dims.width / dims.height;
+        }
+        return 16 / 9; // safe fallback (1.778)
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // JACKET SETUP — called by loader.js after GLB is parsed
     // ═══════════════════════════════════════════════════════════════════════════
 
     setJacket(model) {
         this.model = model;
 
-        // Cache a representative material for dynamic shading
+        // Cache representative material for dynamic shading tweaks
         model.traverse(child => {
             if ((child.isMesh || child.isSkinnedMesh) && child.visible && child.material) {
                 this.jacketMaterial = Array.isArray(child.material)
@@ -83,8 +83,7 @@ class SkeletonMapper {
             }
         });
 
-        // Measure the VISIBLE jacket geometry (not body mesh)
-        // We build a bounding box from jacket meshes only
+        // Measure ONLY the visible jacket meshes for bounding box
         const jacketMeshes = modelLoader.getMeshes();
         this.jacketMeshes  = jacketMeshes;
 
@@ -97,8 +96,8 @@ class SkeletonMapper {
 
         if (bbox.isEmpty()) {
             console.warn('⚠️  Jacket bounding box is empty — using defaults');
-            this._modelW = 1.0;
-            this._modelH = 1.0;
+            this._modelW        = 1.0;
+            this._modelH        = 1.0;
             this._shoulderSeamY = 0.5;
         } else {
             const size = new THREE.Vector3();
@@ -106,32 +105,26 @@ class SkeletonMapper {
             this._modelW = size.x > 0 ? size.x : 1.0;
             this._modelH = size.y > 0 ? size.y : 1.0;
 
-            // Shoulder seam is empirically ~75–80% up from the hem.
-            // Adjust this value in CONFIG.RIG.SHOULDER_SEAM_RATIO if the jacket
-            // sits too high or too low on the person.
-            const seamRatio = CONFIG.RIG?.SHOULDER_SEAM_RATIO ?? 0.78;
+            const seamRatio     = CONFIG.RIG?.SHOULDER_SEAM_RATIO ?? 0.78;
             this._shoulderSeamY = bbox.min.y + this._modelH * seamRatio;
 
             console.log(`Jacket bbox: W=${size.x.toFixed(3)} H=${size.y.toFixed(3)}`);
             console.log(`Shoulder seam local Y: ${this._shoulderSeamY.toFixed(3)} (ratio ${seamRatio})`);
-
             this._warnScaleIfNeeded(size);
         }
 
-        // Initialise poseRetargeter with the skeleton
+        // Initialise bone retargeter with the shared skeleton
         const skeleton = modelLoader.getSkeleton();
         if (skeleton) {
             poseRetargeter.init(skeleton);
         } else {
-            console.log('ℹ️  No skeleton — jacket will be positioned but not deformed by bones');
+            console.log('ℹ️  No skeleton found — jacket positioned only, no bone deformation');
         }
 
         model.visible = false;
     }
 
-    setDynamicLight(light) {
-        this.dynamicLight = light;
-    }
+    setDynamicLight(light) { this.dynamicLight = light; }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // FABRIC APPLIED — called by materials.js after material swap
@@ -140,7 +133,7 @@ class SkeletonMapper {
     onFabricApplied() {
         this._fabricReady = true;
 
-        // Refresh the cached material reference (it was just replaced)
+        // Refresh material reference (was just replaced by materialsManager)
         this.jacketMeshes.forEach(mesh => {
             if (mesh.material) {
                 this.jacketMaterial = Array.isArray(mesh.material)
@@ -150,7 +143,6 @@ class SkeletonMapper {
         });
 
         if (this.model) {
-            // Show at a safe centre position while waiting for first pose
             const pos = this._safeCenterPosition();
             this._applyGroupTransform(pos, this._safeDefaultScale(), 0, 0);
             this.model.visible = true;
@@ -159,7 +151,7 @@ class SkeletonMapper {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // MAIN UPDATE — called every frame by app.js / onPoseUpdate
+    // MAIN UPDATE — called every frame by app.js → onPoseUpdate
     // ═══════════════════════════════════════════════════════════════════════════
 
     update(poseData) {
@@ -168,7 +160,7 @@ class SkeletonMapper {
 
         const cam = sceneManager.getCamera();
 
-        // ── No pose detected: keep jacket at safe centre ──────────────────────
+        // No pose: hold at safe centre
         if (!poseData || !poseData.landmarks) {
             this.smooth.position.lerp(this._safeCenterPosition(), 0.05);
             this.smooth.scale += (this._safeDefaultScale() - this.smooth.scale) * 0.05;
@@ -181,18 +173,15 @@ class SkeletonMapper {
         const lm = poseData.landmarks;
         const L  = CONFIG.SKELETON.LANDMARKS;
 
-        const LS  = lm[L.LEFT_SHOULDER];
-        const RS  = lm[L.RIGHT_SHOULDER];
-        const LH  = lm[L.LEFT_HIP];
-        const RH  = lm[L.RIGHT_HIP];
+        const LS = lm[L.LEFT_SHOULDER];
+        const RS = lm[L.RIGHT_SHOULDER];
 
-        // Require both shoulders to be reasonably visible
         if (!LS || !RS || LS.visibility < 0.35 || RS.visibility < 0.35) {
-            this.model.visible = true; // keep last pose
+            this.model.visible = true; // keep last position
             return;
         }
 
-        // ── Calibration phase ─────────────────────────────────────────────────
+        // Calibration phase
         if (!this.cal.ready) {
             this._accumulate(LS, RS);
             this.smooth.position.lerp(this._safeCenterPosition(), 0.05);
@@ -207,25 +196,25 @@ class SkeletonMapper {
             return;
         }
 
-        // ── Compute world-space shoulder position ─────────────────────────────
-        // Mirror X for front-facing camera (MediaPipe left ↔ screen left are swapped)
-        const mLS_x = 1 - LS.x, mRS_x = 1 - RS.x;
+        // Mirror X — front-facing camera reverses MediaPipe's left/right
+        const mLS_x        = 1 - LS.x;
+        const mRS_x        = 1 - RS.x;
         const shoulderMidNX = (mLS_x + mRS_x) * 0.5;
         const shoulderMidNY = (LS.y  + RS.y)  * 0.5;
 
-        const shoulderWidth  = Math.hypot(RS.x - LS.x, RS.y - LS.y);
-        const ref            = this.cal.ref;
+        const shoulderWidth = Math.hypot(RS.x - LS.x, RS.y - LS.y);
+        const ref           = this.cal.ref;
 
-        // Depth from calibrated shoulder width (person moves closer → width grows)
+        // Depth scales inversely with apparent shoulder width
         const depth = THREE.MathUtils.clamp(
             ref.depth * (ref.shoulderWidth / Math.max(shoulderWidth, 0.04)),
-            0.3, 8.0
+            0.5, 8.0
         );
 
-        // World-space shoulder-line midpoint
+        // World-space shoulder midpoint using VIDEO aspect
         const worldShoulderPos = this._normToWorld(shoulderMidNX, shoulderMidNY, depth, cam);
 
-        // ── Scale: match jacket shoulder width to person's shoulder width ──────
+        // Scale: match jacket shoulder span to detected shoulder width
         const unitScale       = CONFIG.JACKET.MODEL_UNIT_SCALE ?? 1.0;
         const jacketShoulderW = this._modelW * unitScale * (CONFIG.RIG?.SHOULDER_SPAN_RATIO ?? 0.60);
         const worldShoulderW  = this._normWidthToWorld(shoulderWidth, depth, cam);
@@ -234,7 +223,7 @@ class SkeletonMapper {
             0.001, 500.0
         );
 
-        // ── Pose angles ──────────────────────────────────────────────────────
+        // Pose angles
         const roll = THREE.MathUtils.clamp(
             Math.atan2(RS.y - LS.y, RS.x - LS.x), -0.30, 0.30
         );
@@ -242,32 +231,25 @@ class SkeletonMapper {
             ? THREE.MathUtils.clamp((LS.z + RS.z) * 0.35, -0.25, 0.25)
             : 0;
 
-        // ── Smooth and apply ──────────────────────────────────────────────────
-        const SMOOTH_POS   = 0.15;
-        const SMOOTH_SCALE = 0.15;
-        const SMOOTH_ROT   = 0.08;
-
-        this.smooth.position.lerp(worldShoulderPos, SMOOTH_POS);
-        this.smooth.scale += (targetScale - this.smooth.scale) * SMOOTH_SCALE;
-        this.smooth.roll  += (roll - this.smooth.roll)         * SMOOTH_ROT;
-        this.smooth.lean  += (lean - this.smooth.lean)         * SMOOTH_ROT;
+        // Smooth everything
+        this.smooth.position.lerp(worldShoulderPos, 0.15);
+        this.smooth.scale += (targetScale - this.smooth.scale) * 0.15;
+        this.smooth.roll  += (roll - this.smooth.roll)         * 0.08;
+        this.smooth.lean  += (lean - this.smooth.lean)         * 0.08;
 
         this._applyGroupTransform(
             this.smooth.position, this.smooth.scale,
             this.smooth.lean,     this.smooth.roll
         );
 
-        // ── Bone retargeting (delegates to PoseRetargeter) ────────────────────
+        // Bone retargeting
         if (poseRetargeter.initialized) {
             poseRetargeter.update(lm, depth, cam);
         }
 
-        // ── Dynamic shading ───────────────────────────────────────────────────
         this._updateDynamicShading(lm, shoulderWidth);
-
         this.model.visible = true;
 
-        // ── Debug log ─────────────────────────────────────────────────────────
         if (this.frameCount % this._DEBUG_INTERVAL === 0) {
             console.log(
                 `[f${this.frameCount}] sw=${shoulderWidth.toFixed(3)} ` +
@@ -278,7 +260,7 @@ class SkeletonMapper {
 
     // ═══════════════════════════════════════════════════════════════════════════
     // GROUP TRANSFORM
-    // Positions the model GROUP so the jacket's shoulder seam lands at worldPos.
+    // Shifts model DOWN by (shoulderSeam × scale) so jacket seam = worldPos.y
     // ═══════════════════════════════════════════════════════════════════════════
 
     _applyGroupTransform(worldPos, scale, lean, roll) {
@@ -287,15 +269,13 @@ class SkeletonMapper {
         const unitScale = CONFIG.JACKET.MODEL_UNIT_SCALE ?? 1.0;
         const seam      = this._shoulderSeamY * unitScale;
 
-        // Shift the group DOWN by (seam × scale) so the jacket's shoulder seam
-        // lands at worldPos instead of the model origin landing there.
         const pos = worldPos.clone();
         pos.y -= seam * scale;
 
         this.model.position.copy(pos);
         this.model.scale.setScalar(scale);
         this.model.rotation.order = 'YXZ';
-        this.model.rotation.y = Math.PI;   // face camera (Blender -Z forward → THREE +Z)
+        this.model.rotation.y = Math.PI; // face camera
         this.model.rotation.x = lean ?? 0;
         this.model.rotation.z = roll ?? 0;
     }
@@ -307,7 +287,6 @@ class SkeletonMapper {
     _accumulate(LS, RS) {
         this.cal.sumShoulderW += Math.hypot(RS.x - LS.x, RS.y - LS.y);
         this.cal.frames++;
-
         if (this.cal.frames >= this.cal.FRAMES_NEEDED) {
             this._lockCalibration();
         }
@@ -319,12 +298,14 @@ class SkeletonMapper {
 
         ref.shoulderWidth = this.cal.sumShoulderW / n;
 
-        const cam = sceneManager.getCamera();
-       ref.depth = THREE.MathUtils.clamp(
-    0.45 / (ref.shoulderWidth * 2 *
-        Math.tan(cam.fov * Math.PI / 180 / 2) * cam.aspect),
-    1.5, 7.0   // was 0.3
-);
+        const cam         = sceneManager.getCamera();
+        const videoAspect = this._getVideoAspect(); // ← VIDEO aspect, not cam.aspect
+
+        ref.depth = THREE.MathUtils.clamp(
+            0.45 / (ref.shoulderWidth * 2 *
+                Math.tan(cam.fov * Math.PI / 180 / 2) * videoAspect),
+            0.5, 7.0
+        );
 
         this.cal.ready = true;
         console.log(
@@ -334,29 +315,28 @@ class SkeletonMapper {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // SAFE DEFAULTS (no pose / pre-calibration)
+    // SAFE DEFAULTS (pre-calibration / no pose)
     // ═══════════════════════════════════════════════════════════════════════════
 
     _safeCenterPosition() {
         const depth = 2.5;
         const cam   = sceneManager.getCamera();
         const halfH = Math.tan(cam.fov * Math.PI / 360) * depth;
-        // Place slightly above centre (chest area)
         return new THREE.Vector3(0, halfH * 0.10, -depth);
     }
 
     _safeDefaultScale() {
         if (!this.model || this._modelH <= 0) return 1.0;
-        const depth   = 2.5;
-        const cam     = sceneManager.getCamera();
-        const sceneH  = 2 * Math.tan(cam.fov * Math.PI / 360) * depth;
-        const targetH = sceneH * 0.40;   // jacket fills 40% of view height
+        const depth     = 2.5;
+        const cam       = sceneManager.getCamera();
+        const sceneH    = 2 * Math.tan(cam.fov * Math.PI / 360) * depth;
+        const targetH   = sceneH * 0.40;
         const unitScale = CONFIG.JACKET.MODEL_UNIT_SCALE ?? 1.0;
         return THREE.MathUtils.clamp(targetH / (this._modelH * unitScale), 0.001, 500.0);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // DYNAMIC SHADING — roughness & env map shift with body rotation
+    // DYNAMIC SHADING
     // ═══════════════════════════════════════════════════════════════════════════
 
     _updateDynamicShading(lm, shoulderWidth) {
@@ -368,27 +348,22 @@ class SkeletonMapper {
         const RS = lm[L.RIGHT_SHOULDER];
         if (!LS || !RS) return;
 
-        // Body rotation (side-on vs frontal)
         const turn = THREE.MathUtils.clamp((LS.z - RS.z) * 3.0, -1, 1);
 
-        // Roughness increases when jacket stretches (person's shoulders wider than calibration)
         if (mat.roughness !== undefined && this.cal.ref.shoulderWidth) {
             const stretch = (shoulderWidth - this.cal.ref.shoulderWidth) / this.cal.ref.shoulderWidth;
             const targetR = THREE.MathUtils.clamp(0.75 + stretch * 0.3, 0.35, 1.0);
             mat.roughness += (targetR - mat.roughness) * 0.08;
         }
 
-        // Env map intensity increases when turning side-on (more specular hit)
         if (mat.envMapIntensity !== undefined) {
             const targetE = this._baseEnvIntensity + Math.abs(turn) * 0.7;
             mat.envMapIntensity += (targetE - mat.envMapIntensity) * 0.06;
         }
 
-        // Move dynamic fill light to simulate turn lighting
         if (this.dynamicLight) {
             this.dynamicLight.position.x +=
                 (-turn * 2.5 - this.dynamicLight.position.x) * 0.05;
-
             if (this.cal.ref.shoulderWidth) {
                 const proxR = THREE.MathUtils.clamp(
                     shoulderWidth / this.cal.ref.shoulderWidth, 0.4, 2.0
@@ -402,12 +377,13 @@ class SkeletonMapper {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // COORDINATE UTILITIES
+    // COORDINATE UTILITIES — both use VIDEO aspect ratio, not canvas aspect
     // ═══════════════════════════════════════════════════════════════════════════
 
     _normToWorld(nx, ny, depth, cam) {
+        const videoAspect = this._getVideoAspect();
         const halfH = Math.tan(cam.fov * Math.PI / 360) * depth;
-        const halfW = halfH * cam.aspect;
+        const halfW = halfH * videoAspect;
         return new THREE.Vector3(
             (nx - 0.5) *  2 * halfW,
             (ny - 0.5) * -2 * halfH,
@@ -416,12 +392,13 @@ class SkeletonMapper {
     }
 
     _normWidthToWorld(normWidth, depth, cam) {
+        const videoAspect = this._getVideoAspect();
         return normWidth * 2 *
-            Math.tan(cam.fov * Math.PI / 360) * depth * cam.aspect;
+            Math.tan(cam.fov * Math.PI / 360) * depth * videoAspect;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // SCALE VALIDATION (warning only, fired at load time)
+    // SCALE VALIDATION
     // ═══════════════════════════════════════════════════════════════════════════
 
     _warnScaleIfNeeded(size) {
@@ -429,15 +406,9 @@ class SkeletonMapper {
         const scaledW   = size.x * unitScale;
 
         if (scaledW > 10) {
-            console.warn(
-                `⚠️  Jacket is very wide (${scaledW.toFixed(2)} m after scale). ` +
-                `Try CONFIG.JACKET.MODEL_UNIT_SCALE = 0.01`
-            );
+            console.warn(`⚠️  Jacket very wide (${scaledW.toFixed(2)} m). Try MODEL_UNIT_SCALE = 0.01`);
         } else if (scaledW < 0.05) {
-            console.warn(
-                `⚠️  Jacket is very narrow (${scaledW.toFixed(4)} m after scale). ` +
-                `Try CONFIG.JACKET.MODEL_UNIT_SCALE = 10`
-            );
+            console.warn(`⚠️  Jacket very narrow (${scaledW.toFixed(4)} m). Try MODEL_UNIT_SCALE = 10`);
         } else {
             console.log(`✅ Jacket scale OK — width ~${scaledW.toFixed(3)} m`);
         }
@@ -447,38 +418,23 @@ class SkeletonMapper {
     // PUBLIC API
     // ═══════════════════════════════════════════════════════════════════════════
 
-    /** Force fresh calibration (e.g. after camera switch) */
     recalibrate() {
         this.cal = {
             ready: false, frames: 0, FRAMES_NEEDED: 20,
             sumShoulderW: 0,
             ref: { shoulderWidth: null, depth: null }
         };
-        this.smooth = {
-            position: new THREE.Vector3(),
-            scale: 1, roll: 0, lean: 0
-        };
+        this.smooth = { position: new THREE.Vector3(), scale: 1, roll: 0, lean: 0 };
         poseRetargeter.resetToRest();
         if (this.model) this.model.visible = false;
         console.log('🔄 Recalibrating…');
     }
 
-    setFabricReflectivity(v) {
-        this._baseEnvIntensity = THREE.MathUtils.clamp(v, 0, 1);
-    }
-
-    isCalibrated() { return this.cal.ready; }
-    reset()        { this.recalibrate(); }
-
-    // Legacy helpers kept for compatibility with pose-tracker / materials
-    getShoulderWidth()  {
-        return this.cal.ref.shoulderWidth ?? 0;
-    }
-
-    getBodyRotation() {
-        // Returns approximate left-right rotation of body (0 = frontal)
-        return this.smooth.lean;
-    }
+    setFabricReflectivity(v) { this._baseEnvIntensity = THREE.MathUtils.clamp(v, 0, 1); }
+    isCalibrated()     { return this.cal.ready; }
+    reset()            { this.recalibrate(); }
+    getShoulderWidth() { return this.cal.ref.shoulderWidth ?? 0; }
+    getBodyRotation()  { return this.smooth.lean; }
 }
 
 const skeletonMapper = new SkeletonMapper();
