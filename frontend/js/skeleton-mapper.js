@@ -320,11 +320,11 @@ class SkeletonMapper {
         ref.shoulderWidth = this.cal.sumShoulderW / n;
 
         const cam = sceneManager.getCamera();
-        ref.depth = THREE.MathUtils.clamp(
-            0.45 / (ref.shoulderWidth * 2 *
-                Math.tan(cam.fov * Math.PI / 180 / 2) * cam.aspect),
-            0.3, 7.0
-        );
+       ref.depth = THREE.MathUtils.clamp(
+    0.45 / (ref.shoulderWidth * 2 *
+        Math.tan(cam.fov * Math.PI / 180 / 2) * cam.aspect),
+    1.5, 7.0   // was 0.3
+);
 
         this.cal.ready = true;
         console.log(

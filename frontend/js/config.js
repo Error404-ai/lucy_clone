@@ -21,7 +21,7 @@ const CONFIG = {
 
     /* ─────────────────────────── JACKET ─────────────────────────────── */
     JACKET: {
-        MODEL_PATH: 'assets/models/19_Jacket.glb',
+        MODEL_PATH: 'assets/models/20_Jacket.glb',
 
         // ── MODEL_UNIT_SCALE ────────────────────────────────────────────
         // Fix if jacket appears massively too big or too small.
@@ -54,7 +54,7 @@ const CONFIG = {
         // Examples:
         //   ['Body', 'Skin', 'Human']  ← matches "Body.001", "SkinMesh" etc.
         //   []  ← leave empty to use automatic keyword/size detection
-       BODY_MESH_NAMES: ['man_med_nrw_hair', 'Mesh035'],
+       BODY_MESH_NAMES: ['man_med_nrw_body', 'man_med_nrw_hair', 'Mesh035'],
 
         // ── Shoulder seam position ───────────────────────────────────────
         // How far up the jacket's bounding box (0=bottom hem, 1=top collar)
