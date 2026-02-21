@@ -6,12 +6,9 @@
     <title>Lucy Virtual Try-On</title>
     
     <!-- Three.js -->
-<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    
-    <!-- ✅ ADD THESE TWO LINES - DRACOLoader for compressed models -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
-    
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/meshopt_decoder.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     
@@ -164,16 +161,38 @@
         <span id="error-message"></span>
     </div>
 
-    <!-- Scripts -->
+    <!-- ─── Scripts (load order matters) ────────────────────────────────────
+         config.js        must be first  — all others depend on CONFIG
+         utils.js         second         — all others use Utils
+         keyframe-selector.js            — standalone, no deps
+         camera.js                       — uses CONFIG, Utils
+         pose-tracker.js                 — uses CONFIG, Utils
+         scene.js                        — uses THREE, CONFIG
+         loader.js                       — uses THREE, CONFIG, sceneManager, skeletonMapper
+         materials.js                    — uses THREE, modelLoader, skeletonMapper, sceneManager
+         skeleton-mapper.js              — uses THREE, CONFIG, modelLoader, sceneManager, poseRetargeter
+         pose-retargeter.js              — uses THREE, CONFIG, modelLoader
+         renderer.js                     — uses THREE, CONFIG, sceneManager, cameraManager
+         fabric-selector.js              — uses materialsManager, modelLoader, Utils
+         ai-pipeline.js                  — uses CONFIG, Utils, cameraManager, poseTracker, etc.
+         capture.js                      — uses CONFIG, Utils, cameraManager, etc.
+         app.js                          — last: orchestrates all the above
+    ──────────────────────────────────────────────────────────────────────── -->
     <script src="js/config.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/keyframe-selector.js"></script>
     <script src="js/camera.js"></script>
     <script src="js/pose-tracker.js"></script>
     <script src="js/scene.js"></script>
-    <script src="js/loader.js"></script>
-    <script src="js/materials.js"></script>
+
+    <!-- pose-retargeter BEFORE skeleton-mapper (mapper calls poseRetargeter.init) -->
+    <script src="js/pose-retargeter.js"></script>
     <script src="js/skeleton-mapper.js"></script>
+
+    <!-- loader AFTER skeleton-mapper (loader calls skeletonMapper.setJacket) -->
+    <script src="js/loader.js"></script>
+
+    <script src="js/materials.js"></script>
     <script src="js/renderer.js"></script>
     <script src="js/fabric-selector.js"></script>
     <script src="js/ai-pipeline.js"></script>
