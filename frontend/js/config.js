@@ -31,8 +31,7 @@ const CONFIG = {
         //   Model authored in CENTIMETERS:            0.01
         //   Model authored in MILLIMETERS:            0.001
         //   Model authored in INCHES (rare):          0.0254
-        MODEL_UNIT_SCALE: 1.0,
-
+       MODEL_UNIT_SCALE: 0.01,
         ROTATION: { x: 0, y: Math.PI, z: 0 },
         SCALE:    0.5,
         POSITION: { x: 0, y: 0, z: -2.5 }
@@ -55,7 +54,7 @@ const CONFIG = {
         // Examples:
         //   ['Body', 'Skin', 'Human']  ← matches "Body.001", "SkinMesh" etc.
         //   []  ← leave empty to use automatic keyword/size detection
-        BODY_MESH_NAMES: [],
+       BODY_MESH_NAMES: ['man_med_nrw_hair', 'Mesh035'],
 
         // ── Shoulder seam position ───────────────────────────────────────
         // How far up the jacket's bounding box (0=bottom hem, 1=top collar)

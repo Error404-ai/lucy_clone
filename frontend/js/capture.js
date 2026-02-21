@@ -83,8 +83,8 @@ class CaptureManager {
             // Get pose data
             const pose = poseTracker.isPoseDetected() ? {
                 landmarks: poseTracker.landmarks,
-                shoulderWidth: poseTracker.getShoulderWidth(),
-                rotation: poseTracker.getBodyRotation()
+                shoulderWidth: skeletonMapper.getShoulderWidth(),
+rotation: skeletonMapper.getBodyRotation()
             } : null;
             
             // Get current fabric
