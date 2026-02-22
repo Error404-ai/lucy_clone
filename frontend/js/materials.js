@@ -1,6 +1,8 @@
-// materials.js — MOBILE + DESKTOP SAFE
-// Key change: calls skeletonMapper.onFabricApplied() after material is set,
-// which tells the mapper it's safe to show the jacket now.
+// materials.js — VISIBILITY FIX
+// Key changes:
+//   1. onFabricApplied() is ALWAYS called after applyFabric(), even on failure,
+//      so _fabricReady is always set and the jacket stays visible.
+//   2. reset() no longer sets renderOrder 9999 (was fighting with loader's value of 1).
 
 class MaterialsManager {
     constructor() {
@@ -15,8 +17,8 @@ class MaterialsManager {
             roughness:  0.7,
             metalness:  0.1,
             side:       THREE.DoubleSide,
-            depthTest:  false,
-            depthWrite: false,
+            depthTest:  true,
+            depthWrite: true,
             transparent: false,
             opacity:    1.0
         });
@@ -24,18 +26,23 @@ class MaterialsManager {
     }
 
     async applyFabric(fabricData) {
+        let appliedCount = 0;
+
         try {
             console.log('🎨 Applying fabric:', fabricData.name);
 
-            const model       = modelLoader.getModel();
+            const model        = modelLoader.getModel();
             const jacketMeshes = modelLoader.getMeshes();
 
             if (!model) {
                 console.error('❌ Model not loaded yet');
+                // Still call onFabricApplied so the jacket stays visible
+                this._notifyFabricApplied();
                 return false;
             }
             if (!jacketMeshes || jacketMeshes.length === 0) {
                 console.error('❌ No jacket meshes found');
+                this._notifyFabricApplied();
                 return false;
             }
 
@@ -44,17 +51,15 @@ class MaterialsManager {
                 : '#808080';
 
             const newMaterial = new THREE.MeshStandardMaterial({
-    color:       colorValue,
-    roughness:   fabricData.roughness  ?? 0.7,
-    metalness:   fabricData.metalness  ?? 0.1,
-    side:        THREE.FrontSide,        // was DoubleSide
-    depthTest:   true,                   // was false — CRITICAL fix
-    depthWrite:  true,                   // was false — CRITICAL fix
-    transparent: false,
-    opacity:     1.0
-});
-
-            let appliedCount = 0;
+                color:       colorValue,
+                roughness:   fabricData.roughness  ?? 0.7,
+                metalness:   fabricData.metalness  ?? 0.1,
+                side:        THREE.DoubleSide,
+                depthTest:   true,
+                depthWrite:  true,
+                transparent: false,
+                opacity:     1.0
+            });
 
             for (const mesh of jacketMeshes) {
                 if (!mesh || !(mesh.isMesh || mesh.isSkinnedMesh)) continue;
@@ -63,14 +68,12 @@ class MaterialsManager {
                     const oldMaterial = mesh.material;
                     mesh.material = newMaterial.clone();
 
-                    // Force render on top of everything including the video plane
-                    mesh.renderOrder     = 1;
-                    mesh.frustumCulled   = false;
-                    mesh.visible         = true;
-                    mesh.castShadow      = false;
-                    mesh.receiveShadow   = false;
+                    mesh.renderOrder    = 1;
+                    mesh.frustumCulled  = false;
+                    mesh.visible        = true;
+                    mesh.castShadow     = false;
+                    mesh.receiveShadow  = false;
 
-                    mesh.material.side       = THREE.DoubleSide;
                     mesh.material.needsUpdate = true;
 
                     appliedCount++;
@@ -87,31 +90,37 @@ class MaterialsManager {
                 this.currentMaterial = newMaterial;
                 this.currentFabric   = fabricData;
 
-                // Make jacket group visible
+                // Ensure the jacket group is visible
                 modelLoader.setVisible(true);
 
-                // ── CRITICAL: tell skeleton mapper it can now show the jacket ──
-                // Without this, the jacket stays invisible until pose is detected,
-                // which on mobile can take a long time or never happen if the
-                // person is too close to the camera.
-                if (typeof skeletonMapper !== 'undefined' && skeletonMapper.onFabricApplied) {
-                    skeletonMapper.onFabricApplied();
-                }
-
-                console.log(`✅ Fabric "${fabricData.name}" applied to ${appliedCount} mesh(es)`);
-
-                // Force a render to make it immediately visible
+                // Force a render immediately
                 try { sceneManager.render(); } catch (e) {}
 
-                return true;
+                console.log(`✅ Fabric "${fabricData.name}" applied to ${appliedCount} mesh(es)`);
+            } else {
+                console.error('❌ No meshes were updated');
             }
-
-            console.error('❌ No meshes were updated');
-            return false;
 
         } catch (error) {
             console.error('❌ Error applying fabric:', error);
-            return false;
+        }
+
+        // ── VISIBILITY FIX ────────────────────────────────────────────────────
+        // Always notify skeleton-mapper regardless of success/failure.
+        // This ensures _fabricReady=true and the jacket stays visible.
+        this._notifyFabricApplied();
+
+        return appliedCount > 0;
+    }
+
+    /**
+     * Notify skeleton-mapper that a fabric has been applied (or attempted).
+     * Called unconditionally so the jacket is never left invisible due to a
+     * silent material-apply failure.
+     */
+    _notifyFabricApplied() {
+        if (typeof skeletonMapper !== 'undefined' && skeletonMapper.onFabricApplied) {
+            skeletonMapper.onFabricApplied();
         }
     }
 
@@ -123,7 +132,7 @@ class MaterialsManager {
             for (const mesh of jacketMeshes) {
                 mesh.material = this.defaultMaterial.clone();
                 mesh.material.needsUpdate = true;
-                mesh.renderOrder = 9999;
+                mesh.renderOrder = 1;   // was 9999 — keep consistent with loader
                 mesh.visible = true;
             }
             console.log('✅ Materials reset to default');

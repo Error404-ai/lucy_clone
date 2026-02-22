@@ -1,6 +1,11 @@
 // skeleton-mapper.js — COMBINED RIG VERSION (shoulder-anchored + PoseRetargeter)
 // Key fix: uses VIDEO aspect ratio (1.778) not canvas aspect (3.66+) for all
 // coordinate conversions. MediaPipe landmarks are normalized to video dimensions.
+//
+// VISIBILITY FIX:
+//   The jacket is made visible immediately in setJacket() so it shows even if
+//   fabric apply fails or onFabricApplied() is never called.
+//   _fabricReady no longer gates visibility — it only gates full pose tracking.
 
 class SkeletonMapper {
     constructor() {
@@ -33,6 +38,9 @@ class SkeletonMapper {
         this._baseEnvIntensity = 0.4;
         this.dynamicLight      = null;
 
+        // _fabricReady: tracks whether a material has been applied.
+        // No longer used to gate visibility — only to skip pose tracking
+        // until the user has selected a fabric.
         this._fabricReady = false;
         this.frameCount   = 0;
         this.initialized  = false;
@@ -121,7 +129,18 @@ class SkeletonMapper {
             console.log('ℹ️  No skeleton found — jacket positioned only, no bone deformation');
         }
 
-        model.visible = false;
+        // ── VISIBILITY FIX ────────────────────────────────────────────────────
+        // Show jacket at safe centre immediately after load.
+        // Previously this was set to false, then only made true inside
+        // onFabricApplied() — if that path failed, jacket stayed invisible.
+        // Now: show at centre with whatever material the model currently has
+        // (the default material applied by Blender/the exporter). Fabric
+        // selection will swap the material later.
+        const initialPos   = this._safeCenterPosition();
+        const initialScale = this._safeDefaultScale();
+        this._applyGroupTransform(initialPos, initialScale, 0, 0);
+        model.visible = true;
+        console.log('🧥 Jacket shown at centre (will track pose once pose detected)');
     }
 
     setDynamicLight(light) { this.dynamicLight = light; }
@@ -142,11 +161,10 @@ class SkeletonMapper {
             }
         });
 
+        // Ensure jacket is visible (it should already be, but belt-and-suspenders)
         if (this.model) {
-            const pos = this._safeCenterPosition();
-            this._applyGroupTransform(pos, this._safeDefaultScale(), 0, 0);
             this.model.visible = true;
-            console.log('🧥 Jacket visible — waiting for pose');
+            console.log('🧥 Fabric applied — jacket tracking active');
         }
     }
 
@@ -155,18 +173,25 @@ class SkeletonMapper {
     // ═══════════════════════════════════════════════════════════════════════════
 
     update(poseData) {
-        if (!this.model || !this._fabricReady) return;
+        // ── VISIBILITY FIX ────────────────────────────────────────────────────
+        // Never gate on _fabricReady here. If there's no model, bail out.
+        // But always keep the jacket visible — even before fabric selection,
+        // even before pose is detected.
+        if (!this.model) return;
+
+        // Always ensure the jacket group is visible
+        this.model.visible = true;
+
         this.frameCount++;
 
         const cam = sceneManager.getCamera();
 
-        // No pose: hold at safe centre
+        // No pose: hold at safe centre, reset bones to rest
         if (!poseData || !poseData.landmarks) {
             this.smooth.position.lerp(this._safeCenterPosition(), 0.05);
             this.smooth.scale += (this._safeDefaultScale() - this.smooth.scale) * 0.05;
             this._applyGroupTransform(this.smooth.position, this.smooth.scale, 0, 0);
             poseRetargeter.resetToRest();
-            this.model.visible = true;
             return;
         }
 
@@ -177,7 +202,7 @@ class SkeletonMapper {
         const RS = lm[L.RIGHT_SHOULDER];
 
         if (!LS || !RS || LS.visibility < 0.35 || RS.visibility < 0.35) {
-            this.model.visible = true; // keep last position
+            // Keep last transform — do not hide
             return;
         }
 
@@ -187,7 +212,6 @@ class SkeletonMapper {
             this.smooth.position.lerp(this._safeCenterPosition(), 0.05);
             this.smooth.scale += (this._safeDefaultScale() - this.smooth.scale) * 0.05;
             this._applyGroupTransform(this.smooth.position, this.smooth.scale, 0, 0);
-            this.model.visible = true;
 
             if (this.frameCount % 5 === 0) {
                 const pct = Math.round(this.cal.frames / this.cal.FRAMES_NEEDED * 100);
@@ -248,7 +272,6 @@ class SkeletonMapper {
         }
 
         this._updateDynamicShading(lm, shoulderWidth);
-        this.model.visible = true;
 
         if (this.frameCount % this._DEBUG_INTERVAL === 0) {
             console.log(
@@ -426,7 +449,6 @@ class SkeletonMapper {
         };
         this.smooth = { position: new THREE.Vector3(), scale: 1, roll: 0, lean: 0 };
         poseRetargeter.resetToRest();
-        if (this.model) this.model.visible = false;
         console.log('🔄 Recalibrating…');
     }
 

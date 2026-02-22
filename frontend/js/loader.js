@@ -9,7 +9,12 @@
 //   2. Keyword heuristic           — 'body', 'skin', 'human', 'torso', etc.
 //   3. Largest-mesh fallback       — the mesh with the most vertices is the body
 //
-// If detection mis-fires you can override it via CONFIG.RIG.BODY_MESH_NAMES.
+// VISIBILITY FIX:
+//   The jacket group is left VISIBLE after loading. skeleton-mapper.setJacket()
+//   positions it at the safe centre and keeps it visible. Previously setting
+//   jacketModel.visible = false here created a hidden-by-default state that
+//   only cleared if onFabricApplied() was successfully called — any failure in
+//   that chain caused the jacket to stay invisible permanently.
 
 class ModelLoader {
     constructor() {
@@ -104,11 +109,17 @@ class ModelLoader {
         // 6. Validate geometry scale
         this._validateScale();
 
-        // 7. Set initial transform (matches original config defaults)
+        // 7. Set initial transform — no Y rotation here, skeleton-mapper handles it
         this.jacketModel.scale.setScalar(1.0);
         this.jacketModel.position.set(0, 0, 0);
         this.jacketModel.rotation.set(0, Math.PI, 0);
-        this.jacketModel.visible = false;
+
+        // ── VISIBILITY FIX ────────────────────────────────────────────────────
+        // Do NOT set visible = false here. The jacket starts visible with whatever
+        // material the GLB has. skeleton-mapper.setJacket() will position it
+        // correctly at the screen centre immediately.
+        // Previously: this.jacketModel.visible = false;  ← THIS WAS THE BUG
+        this.jacketModel.visible = true;
 
         // 8. Register with scene + mapper
         sceneManager.add(this.jacketModel);
