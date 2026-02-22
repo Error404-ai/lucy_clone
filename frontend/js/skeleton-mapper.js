@@ -1,21 +1,25 @@
-// skeleton-mapper.js — HIP-ANCHORED VERSION
+// skeleton-mapper.js — HIP-ANCHORED, UNIT-SCALE FIXED
 //
-// KEY FIX — why "seam offset" was pushing jacket off-screen:
-//   Old code: shoulder seam Y = 137.6 local units → 1.376 m after unit scale
-//   Offset applied = 1.376 × scale (~2) = 2.87 m DOWN
-//   Visible scene height at depth 2.5 m ≈ 3.8 m total → 1.9 m below centre
-//   So the jacket group origin was 2.87 m below the shoulder → below the canvas.
+// THE BUG THAT CAUSED INVISIBLE JACKET:
+//   _applyGroupTransform was calling:
+//     this.model.scale.setScalar(scale)          ← scale ≈ 0.962
+//     pos.y -= pelvisLocalY * unitScale * scale  ← offset used unitScale=0.01
 //
-//   Root cause: for a SKINNED mesh the group origin sits at the skeleton ROOT
-//   (pelvis), not at the shoulder mesh surface. Bounding-box offsets are wrong
-//   because bone animation moves verts away from rest position.
+//   These were INCONSISTENT:
+//     • The offset assumed the model would be at scale 0.962 × 0.01 = 0.00962
+//     • But the model was actually set to scale 0.962 (100× too large)
+//     • Pelvis bone world Y = group.pos.y + 91.354 × 0.962 = group.pos.y + 87.9m
+//     • ALL bones were ≈88 metres off-screen → jacket invisible
 //
-// CORRECT APPROACH:
-//   1. setJacket(): find the pelvis bone and record its local Y (_pelvisLocalY).
-//   2. update(): anchor the group to the DETECTED HIP world position.
-//   3. _applyGroupTransform(): shift group DOWN by pelvisLocalY × scale so the
-//      pelvis bone aligns with the detected hip. PoseRetargeter then drives
-//      spine/shoulder/arm bones correctly on top of this root anchor.
+// THE FIX:
+//     effectiveScale = scale × unitScale          (0.962 × 0.01 = 0.00962)
+//     this.model.scale.setScalar(effectiveScale)  ← apply BOTH factors to model
+//     pos.y -= pelvisLocalY × effectiveScale      ← offset now consistent with scale
+//
+//   Verification:
+//     pelvis world Y = group.pos.y + 91.354 × 0.00962 = group.pos.y + 0.879m ✓
+//     shoulder (local Y≈130) world Y = group.pos.y + 130 × 0.00962 = group.pos.y + 1.25m ✓
+//     jacket width = 88.574 × 0.60 × 0.00962 ≈ 0.511m = detected shoulder width ✓
 
 class SkeletonMapper {
     constructor() {
@@ -43,7 +47,7 @@ class SkeletonMapper {
 
         this._modelW       = 1.0;
         this._modelH       = 1.0;
-        this._pelvisLocalY = 0.0;  // replaces _shoulderSeamY
+        this._pelvisLocalY = 0.0;   // pelvis bone local Y in model units (e.g. cm)
 
         this._baseEnvIntensity = 0.4;
         this.dynamicLight      = null;
@@ -58,7 +62,7 @@ class SkeletonMapper {
     // ═══════════════════════════════════════════════════════════════════════════
     async init(videoWidth, videoHeight) {
         this.initialized = true;
-        console.log('🦴 SkeletonMapper ready (hip-anchored)');
+        console.log('🦴 SkeletonMapper ready (hip-anchored, unit-scale fixed)');
         return true;
     }
 
@@ -105,9 +109,8 @@ class SkeletonMapper {
             this._warnScaleIfNeeded(size);
         }
 
-        // Find pelvis bone Y — the core of the hip-anchor fix
         this._pelvisLocalY = this._computePelvisLocalY(model, bbox);
-        console.log(`🦴 Pelvis anchor local Y: ${this._pelvisLocalY.toFixed(3)} (units)`);
+        console.log(`🦴 Pelvis anchor local Y: ${this._pelvisLocalY.toFixed(3)} units`);
 
         const skeleton = modelLoader.getSkeleton();
         if (skeleton) {
@@ -116,7 +119,7 @@ class SkeletonMapper {
             console.log('ℹ️ No skeleton — position-only mode');
         }
 
-        // Show jacket at safe centre immediately
+        // Show at safe centre immediately (no pose yet)
         const pos   = this._safeCenterPosition();
         const scale = this._safeDefaultScale();
         this._applyGroupTransform(pos, scale, 0, 0);
@@ -124,9 +127,7 @@ class SkeletonMapper {
         console.log('🧥 Jacket shown at centre — waiting for pose');
     }
 
-    // ─── Determine pelvis bone local Y ────────────────────────────────────────
-    // Priority 1: read from the actual pelvis bone world position.
-    // Priority 2: estimate from bounding box (just above jacket hem ≈ waist).
+    // ─── Pelvis bone local Y ─────────────────────────────────────────────────
     _computePelvisLocalY(model, bbox) {
         const skeleton = modelLoader.getSkeleton();
         if (skeleton && skeleton.bones.length > 0) {
@@ -139,20 +140,20 @@ class SkeletonMapper {
 
             if (pelvisBone) {
                 model.updateWorldMatrix(true, true);
-
                 const pelvisWorld = new THREE.Vector3();
                 pelvisBone.getWorldPosition(pelvisWorld);
 
+                // Convert to model local space
                 const modelInv    = new THREE.Matrix4().copy(model.matrixWorld).invert();
                 const pelvisLocal = pelvisWorld.clone().applyMatrix4(modelInv);
 
-                console.log(`  pelvis bone world Y=${pelvisWorld.y.toFixed(3)} → local Y=${pelvisLocal.y.toFixed(3)}`);
+                console.log(`  pelvis world Y=${pelvisWorld.y.toFixed(3)} → local Y=${pelvisLocal.y.toFixed(3)}`);
                 return pelvisLocal.y;
             }
         }
 
-        // Fallback: hips sit just above the jacket hem (~8% of jacket height)
-        if (!bbox.isEmpty()) {
+        // Fallback: just above the jacket hem (~8% of jacket height up)
+        if (bbox && !bbox.isEmpty()) {
             const size = new THREE.Vector3();
             bbox.getSize(size);
             const estimate = bbox.min.y + size.y * 0.08;
@@ -212,9 +213,8 @@ class SkeletonMapper {
         const LS = lm[L.LEFT_SHOULDER];
         const RS = lm[L.RIGHT_SHOULDER];
 
-        // Lowered threshold: 0.35 → 0.25 for better detection at angles
         if (!LS || !RS || LS.visibility < 0.25 || RS.visibility < 0.25) {
-            return; // hold last known position
+            return; // hold last transform
         }
 
         // Calibration
@@ -242,7 +242,6 @@ class SkeletonMapper {
         );
 
         // ── HIP ANCHOR ────────────────────────────────────────────────────────
-        // Use hip midpoint as group anchor so pelvis bone aligns with body root.
         const LH = lm[L.LEFT_HIP];
         const RH = lm[L.RIGHT_HIP];
 
@@ -252,13 +251,15 @@ class SkeletonMapper {
             const hipMidNY = (LH.y + RH.y) * 0.5;
             worldAnchorPos = this._normToWorld(hipMidNX, hipMidNY, depth, cam);
         } else {
-            // Fallback: estimate hips from shoulders (~18% of frame height below)
+            // Estimate hips: shoulders + 18% of frame height down
             const shoulderMidNX = (mLS_x + mRS_x) * 0.5;
             const shoulderMidNY = (LS.y + RS.y) * 0.5;
             worldAnchorPos = this._normToWorld(shoulderMidNX, shoulderMidNY + 0.18, depth, cam);
         }
 
-        // Scale from shoulder width
+        // ── SCALE ─────────────────────────────────────────────────────────────
+        // targetScale is the multiplier BEFORE unitScale.
+        // _applyGroupTransform will multiply by unitScale internally.
         const unitScale       = CONFIG.JACKET.MODEL_UNIT_SCALE ?? 1.0;
         const jacketShoulderW = this._modelW * unitScale * (CONFIG.RIG?.SHOULDER_SPAN_RATIO ?? 0.60);
         const worldShoulderW  = this._normWidthToWorld(shoulderWidth, depth, cam);
@@ -274,11 +275,14 @@ class SkeletonMapper {
 
         // Smooth
         this.smooth.position.lerp(worldAnchorPos, 0.15);
-        this.smooth.scale += (targetScale - this.smooth.scale) * 0.15;
-        this.smooth.roll  += (roll - this.smooth.roll) * 0.08;
-        this.smooth.lean  += (lean - this.smooth.lean) * 0.08;
+        this.smooth.scale += (targetScale  - this.smooth.scale) * 0.15;
+        this.smooth.roll  += (roll         - this.smooth.roll)  * 0.08;
+        this.smooth.lean  += (lean         - this.smooth.lean)  * 0.08;
 
-        this._applyGroupTransform(this.smooth.position, this.smooth.scale, this.smooth.lean, this.smooth.roll);
+        this._applyGroupTransform(
+            this.smooth.position, this.smooth.scale,
+            this.smooth.lean, this.smooth.roll
+        );
 
         if (poseRetargeter.initialized) {
             poseRetargeter.update(lm, depth, cam);
@@ -288,31 +292,42 @@ class SkeletonMapper {
 
         if (this.frameCount % this._DEBUG_INTERVAL === 0) {
             const src = (LH && LH.visibility > 0.20) ? 'hips' : 'est';
-            console.log(`[f${this.frameCount}] anchor=${src} sw=${shoulderWidth.toFixed(3)} depth=${depth.toFixed(2)}m scale=${this.smooth.scale.toFixed(3)}`);
+            const es  = this.smooth.scale * unitScale;
+            console.log(
+                `[f${this.frameCount}] anchor=${src} sw=${shoulderWidth.toFixed(3)} ` +
+                `depth=${depth.toFixed(2)}m scale=${this.smooth.scale.toFixed(3)} ` +
+                `effectiveScale=${es.toFixed(5)}`
+            );
         }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // GROUP TRANSFORM — hip-anchored
+    // GROUP TRANSFORM — hip-anchored, unit-scale included
     //
-    // worldPos is the DETECTED HIP position. We shift the group DOWN by
-    // (pelvisLocalY × unitScale × scale) so the pelvis bone in model space
-    // ends up AT worldPos.y in world space.
+    // worldPos  = world position where the PELVIS BONE should appear.
+    // scale     = size multiplier BEFORE unit conversion (e.g. 0.962).
+    // effectiveScale = scale × unitScale is the actual THREE.js group scale.
+    //
+    // Math:
+    //   group.scale = effectiveScale
+    //   pelvis bone world Y = group.pos.y + pelvisLocalY × effectiveScale
+    //   We want that to equal worldPos.y, so:
+    //   group.pos.y = worldPos.y − pelvisLocalY × effectiveScale
     // ═══════════════════════════════════════════════════════════════════════════
 
     _applyGroupTransform(worldPos, scale, lean, roll) {
         if (!this.model) return;
 
-        const unitScale    = CONFIG.JACKET.MODEL_UNIT_SCALE ?? 1.0;
-        const pelvisOffset = this._pelvisLocalY * unitScale;  // metres
+        const unitScale      = CONFIG.JACKET.MODEL_UNIT_SCALE ?? 1.0;
+        const effectiveScale = scale * unitScale;   // e.g. 0.962 × 0.01 = 0.00962
 
         const pos = worldPos.clone();
-        pos.y -= pelvisOffset * scale;
+        pos.y -= this._pelvisLocalY * effectiveScale;   // shift group so pelvis aligns
 
         this.model.position.copy(pos);
-        this.model.scale.setScalar(scale);
+        this.model.scale.setScalar(effectiveScale);     // ← THE FIX: include unitScale
         this.model.rotation.order = 'YXZ';
-        this.model.rotation.y = Math.PI;
+        this.model.rotation.y = Math.PI;               // face camera
         this.model.rotation.x = lean ?? 0;
         this.model.rotation.z = roll ?? 0;
     }
@@ -344,10 +359,12 @@ class SkeletonMapper {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // SAFE DEFAULTS (no pose)
+    // SAFE DEFAULTS (no pose / pre-calibration)
+    //
+    // Returns scale BEFORE unitScale — _applyGroupTransform multiplies by unitScale.
+    // Hip position is slightly below screen centre (typical upper-body framing).
     // ═══════════════════════════════════════════════════════════════════════════
 
-    // Hip-level world position — slightly below screen centre for upper-body framing
     _safeCenterPosition() {
         const depth = 2.5;
         const cam   = sceneManager.getCamera();
@@ -362,6 +379,8 @@ class SkeletonMapper {
         const sceneH    = 2 * Math.tan(cam.fov * Math.PI / 360) * depth;
         const targetH   = sceneH * 0.40;
         const unitScale = CONFIG.JACKET.MODEL_UNIT_SCALE ?? 1.0;
+        // Divide by (modelH × unitScale) so that when _applyGroupTransform
+        // multiplies by unitScale the final model scale = targetH / modelH_in_metres
         return THREE.MathUtils.clamp(targetH / (this._modelH * unitScale), 0.001, 500.0);
     }
 
@@ -410,7 +429,7 @@ class SkeletonMapper {
     // ═══════════════════════════════════════════════════════════════════════════
 
     _normToWorld(nx, ny, depth, cam) {
-        const va   = this._getVideoAspect();
+        const va    = this._getVideoAspect();
         const halfH = Math.tan(cam.fov * Math.PI / 360) * depth;
         const halfW = halfH * va;
         return new THREE.Vector3(
@@ -428,9 +447,9 @@ class SkeletonMapper {
     _warnScaleIfNeeded(size) {
         const u = CONFIG.JACKET.MODEL_UNIT_SCALE ?? 1.0;
         const w = size.x * u;
-        if (w > 10) console.warn(`⚠️ Jacket wide (${w.toFixed(2)} m). Try MODEL_UNIT_SCALE = 0.01`);
+        if (w > 10)      console.warn(`⚠️ Jacket wide (${w.toFixed(2)} m). Try MODEL_UNIT_SCALE = 0.01`);
         else if (w < 0.05) console.warn(`⚠️ Jacket narrow (${w.toFixed(4)} m). Try MODEL_UNIT_SCALE = 10`);
-        else console.log(`✅ Jacket scale OK — width ~${w.toFixed(3)} m`);
+        else               console.log(`✅ Jacket scale OK — width ~${w.toFixed(3)} m`);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
