@@ -1,3 +1,10 @@
+// pose-tracker.js — TRACKING STABILITY FIXES
+//
+// Changes from previous version:
+//   1. Visibility threshold: 0.35 → 0.25  (less strict, better at angles)
+//   2. EMA_ALPHA: 0.18 → 0.25             (faster response, less lag)
+//   3. Stability filter threshold lowered to match new visibility threshold
+
 class PoseTracker {
     constructor() {
         this.pose = null;
@@ -20,22 +27,22 @@ class PoseTracker {
         const Pose = window.Pose;
 
         this.pose = new Pose({
-           locateFile: (file) =>
-    `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/${file}`
+            locateFile: (file) =>
+                `https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/${file}`
         });
 
         this.pose.setOptions({
-            modelComplexity: 1,          // FIX: was 0 (lite). Use 1 (full) for stable shoulder tracking
-            smoothLandmarks: true,
-            enableSegmentation: false,
-            minDetectionConfidence: 0.55,
-            minTrackingConfidence: 0.55
+            modelComplexity:          1,      // full model — better shoulder tracking
+            smoothLandmarks:          true,
+            enableSegmentation:       false,
+            minDetectionConfidence:   0.50,
+            minTrackingConfidence:    0.50
         });
 
         this.pose.onResults(r => this.onResults(r));
 
         this.isInitialized = true;
-        console.log("✅ PoseTracker ready");
+        console.log('✅ PoseTracker ready');
     }
 
     /* ================= START ================= */
@@ -85,7 +92,7 @@ class PoseTracker {
         if (!results.poseLandmarks) {
             const now = performance.now();
             if (now - this.lastDetectionLog > 5000) {
-                console.log('⚠️ No pose detected (5s)');
+                console.log('⚠️ No pose detected (5s) — ensure full upper body is visible');
                 this.lastDetectionLog = now;
             }
             this.smoothedLandmarks = null;
@@ -97,10 +104,10 @@ class PoseTracker {
         this.landmarks = results.poseLandmarks;
         this.detectionCount++;
 
-        // FIX: EMA alpha was 0.6 — way too high, caused wild jitter.
-        // 0.6 means 60% new noisy value every frame → jacket flies around.
-        // 0.18 means 18% new value → smooth, stable, still responsive.
-        const EMA_ALPHA = 0.18;
+        // EMA_ALPHA: 0.25 gives faster response while still smoothing noise.
+        // Previous value (0.18) caused ~0.5 s of lag at 30 fps which made
+        // the jacket feel like it was rubber-banded rather than worn.
+        const EMA_ALPHA = 0.25;
 
         if (!this.smoothedLandmarks) {
             this.smoothedLandmarks = this.landmarks.map(lm => ({ ...lm }));
@@ -113,12 +120,15 @@ class PoseTracker {
             }));
         }
 
-        /* ---------- STABILITY FILTER ---------- */
+        // ── Stability filter ──────────────────────────────────────────────────
+        // Lowered from 0.35 → 0.25 to match skeleton-mapper's threshold.
+        // At 0.35 many valid frames were silently dropped when the user turned
+        // slightly or the lighting was uneven.
         const L  = CONFIG.SKELETON.LANDMARKS;
         const LS = this.smoothedLandmarks[L.LEFT_SHOULDER];
         const RS = this.smoothedLandmarks[L.RIGHT_SHOULDER];
 
-        if (!LS || !RS || LS.visibility < 0.35 || RS.visibility < 0.35) {
+        if (!LS || !RS || LS.visibility < 0.25 || RS.visibility < 0.25) {
             this.callbacks.forEach(cb => cb({ landmarks: null }));
             return;
         }
@@ -126,7 +136,7 @@ class PoseTracker {
         Utils.updateStatus('tracking', true);
 
         if (this.detectionCount === 1 || this.detectionCount % 120 === 0) {
-            console.log(`✅ Stable pose #${this.detectionCount} — LS=(${LS.x.toFixed(2)},${LS.y.toFixed(2)}) RS=(${RS.x.toFixed(2)},${RS.y.toFixed(2)})`);
+            console.log(`✅ Pose #${this.detectionCount} — LS=(${LS.x.toFixed(2)},${LS.y.toFixed(2)}) RS=(${RS.x.toFixed(2)},${RS.y.toFixed(2)})`);
         }
 
         this.callbacks.forEach(cb => cb({ landmarks: this.smoothedLandmarks }));
