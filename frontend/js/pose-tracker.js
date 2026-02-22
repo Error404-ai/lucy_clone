@@ -91,7 +91,7 @@ class PoseTracker {
     onResults(results) {
         if (!results.poseLandmarks) {
             const now = performance.now();
-            if (now - this.lastDetectionLog > 5000) {
+            if (now - this.lastDetectionLog > 5000 && !cameraManager.isDemoMode) {
                 console.log('⚠️ No pose detected (5s) — ensure full upper body is visible');
                 this.lastDetectionLog = now;
             }
