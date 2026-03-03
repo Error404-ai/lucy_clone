@@ -134,8 +134,8 @@ const CONFIG = {
 
     /* ─────────────────────────── API ────────────────────────────────── */
     API: {
-        BASE_URL: 'http://13.235.100.71:8000',
-WS_URL:   'ws://13.235.100.71:8000',
+BASE_URL: 'https://poachy-contumaciously-shan.ngrok-free.dev',
+WS_URL:   'wss://poachy-contumaciously-shan.ngrok-free.dev',
 
   ENDPOINTS: {
     HEALTH:             '/health',
