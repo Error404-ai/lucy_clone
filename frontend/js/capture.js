@@ -94,17 +94,17 @@ rotation: skeletonMapper.getBodyRotation()
                 throw new Error('Please select a fabric first');
             }
 
-            // Prepare payload
             const payload = {
-                user_image: cameraFrame,
-                jacket_render: jacketRender,
-                pose: pose,
-                fabric_id: fabric.id
-            };
+    person_image:  cameraFrame,
+    garment_image: jacketRender,
+    garment_desc:  fabric ? fabric.name : 'jacket',
+    denoise_steps: 4,
+    seed:          42
+};
 
             // Send to backend for AI enhancement
             const response = await fetch(
-                `${CONFIG.API.BASE_URL}${CONFIG.API.ENDPOINTS.VIRTUAL_TRYON}`,
+                `${CONFIG.API.BASE_URL}${CONFIG.API.ENDPOINTS.VIRTUAL_TRYON_FAST}`,
                 {
                     method: 'POST',
                     headers: {

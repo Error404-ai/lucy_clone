@@ -63,7 +63,7 @@ class AIPipeline {
     async connect() {
         return new Promise((resolve, reject) => {
             try {
-                this.ws = new WebSocket(CONFIG.API.WS_URL);
+                this.ws = new WebSocket(CONFIG.API.WS_URL + CONFIG.API.ENDPOINTS.WS_KEYFRAME);
                 
                 this.ws.onopen = () => {
                     this.isConnected = true;
