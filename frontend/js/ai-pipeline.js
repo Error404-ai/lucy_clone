@@ -138,8 +138,8 @@ class AIPipeline {
             
             const pose = poseTracker.isPoseDetected() ? {
                 landmarks: poseTracker.landmarks,
-                shoulderWidth: poseTracker.getShoulderWidth(),
-                rotation: poseTracker.getBodyRotation()
+                shoulderWidth: skeletonMapper.getShoulderWidth(),
+rotation: skeletonMapper.getBodyRotation()
             } : null;
             
             const fabric = fabricSelector.getSelectedFabric();
