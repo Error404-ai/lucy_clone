@@ -78,7 +78,13 @@ class CaptureManager {
             const cameraFrame = await cameraManager.captureFrameBase64('image/jpeg', 0.95);
             
             // Capture 3D jacket render
-            const jacketRender = compositeRenderer.captureFrame();
+           const garmentResponse = await fetch('assets/jacket_flat.png');
+const garmentBlob = await garmentResponse.blob();
+const jacketRender = await new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.readAsDataURL(garmentBlob);
+});
             
             // Get pose data
             const pose = poseTracker.isPoseDetected() ? {
