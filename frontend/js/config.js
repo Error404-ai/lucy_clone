@@ -1,4 +1,4 @@
-// config.js — FIXED: correct BODY_MESH_NAMES, BONE_NAME_OVERRIDES, MODEL_UNIT_SCALE
+// config.js — UPDATED: AI_PIPELINE enabled, API endpoints wired for live server
 
 const CONFIG = {
 
@@ -24,9 +24,8 @@ const CONFIG = {
         MODEL_PATH: 'assets/models/20_Jacket.glb',
 
         // ── MODEL_UNIT_SCALE ─────────────────────────────────────────────
-        // Your GLB is authored in CENTIMETERS.
-        // Logs confirmed: bbox W=88.574 cm × 0.01 = 0.886 m ✓ (correct shoulder width)
-        // Inspector suggested 0.001 — that is WRONG for your model, ignore it.
+        // GLB is authored in CENTIMETERS.
+        // bbox W=88.574 cm × 0.01 = 0.886 m ✓ (correct shoulder width)
         MODEL_UNIT_SCALE: 0.01,
 
         ROTATION: { x: 0, y: Math.PI, z: 0 },
@@ -38,10 +37,6 @@ const CONFIG = {
     RIG: {
 
         // ── Body mesh names ──────────────────────────────────────────────
-        // ALL non-jacket meshes must be listed here so they are hidden.
-        // man_med_nrw_hair  → was AMBIGUOUS, now correctly hidden
-        // Mesh035_*         → were AMBIGUOUS (body parts: shoes, accessories), now hidden
-        // Cube              → tiny helper mesh (24 verts), hidden
         BODY_MESH_NAMES: [
             'man_med_nrw_body',
             'man_med_nrw_hair',
@@ -59,13 +54,6 @@ const CONFIG = {
         SHOULDER_SPAN_RATIO: 0.60,
 
         // ── Bone name overrides ──────────────────────────────────────────
-        // WHY THESE ARE NEEDED:
-        // pose-retargeter's find() checks if a bone name *contains* a keyword.
-        // All spine bones (spine_01 through spine_05) contain the word "spine"
-        // so they ALL incorrectly matched "spine1". Explicit overrides fix this.
-        //
-        // Also: correctiveRoot bones contain "root" so they falsely matched
-        // "pelvis" — overrides prevent that by locking the real pelvis name.
         BONE_NAME_OVERRIDES: {
             pelvis:    'pelvis',
             spine1:    'spine_01',
@@ -140,29 +128,48 @@ const CONFIG = {
 
     /* ─────────────────────────── OFFLINE MODE ───────────────────────── */
     OFFLINE_MODE: {
-        ENABLED: true
+        // Set to true to fall back to 3D-only if WebSocket is unavailable (Step 32)
+        ENABLED: false
     },
 
     /* ─────────────────────────── API ────────────────────────────────── */
     API: {
-        BASE_URL: '',
-        WS_URL:   '',
-        ENDPOINTS: {
-            VIRTUAL_TRYON:  '/api/virtual-tryon',
-            FABRIC_SCAN:    '/api/fabric/scan',
-            FABRIC_CATALOG: '/api/fabric/catalog'
-        }
+        BASE_URL: 'http://13.235.100.71:8000',
+WS_URL:   'ws://13.235.100.71:8000',
+
+  ENDPOINTS: {
+    HEALTH:             '/health',
+    VIRTUAL_TRYON:      '/api/tryon',
+    VIRTUAL_TRYON_FAST: '/api/tryon/fast',
+    WS_KEYFRAME:        '/ws/tryon',        // WebSocket endpoint
+}
     },
 
     /* ─────────────────────────── AI PIPELINE ────────────────────────── */
     AI_PIPELINE: {
-        ENABLED:                    false,
-        KEYFRAME_INTERVAL:          2000,
-        JPEG_QUALITY:               0.8,
-        BLEND_TRANSITION_DURATION:  500,
-        MAX_BLEND_ALPHA:            0.7,
-        MAX_RECONNECT_ATTEMPTS:     3,
-        RECONNECT_DELAY:            2000
+        // ── NOW ENABLED — server confirmed ready ─────────────────────────
+        ENABLED: true,
+
+        // How often (ms) to send a keyframe to the AI server (Step 27)
+        // 2000ms = 1 AI-enhanced frame every 2 seconds
+        KEYFRAME_INTERVAL: 2000,
+
+        // JPEG quality for the camera frame sent over WebSocket (~50KB target)
+        JPEG_QUALITY: 0.80,
+
+        // Step 28: blending params
+        // How long (ms) to fade from Three.js → AI keyframe when one arrives
+        BLEND_TRANSITION_DURATION: 500,
+
+        // Max AI blend alpha — cap at 0.7 so live 3D tracking stays responsive
+        MAX_BLEND_ALPHA: 0.7,
+
+        // WebSocket reconnect strategy (Step 32 offline fallback)
+        MAX_RECONNECT_ATTEMPTS: 3,
+        RECONNECT_DELAY: 2000,          // ms between reconnect tries
+
+        // Premium capture: max ms to wait for the full-quality result (Step 29)
+        CAPTURE_TIMEOUT_MS: 10000
     },
 
     /* ─────────────────────────── DEBUG ──────────────────────────────── */
