@@ -175,14 +175,17 @@ class SkeletonMapper {
         const worldShoulder = this._normToWorld(shoulderMidNX, shoulderMidNY, depth, cam);
 
         // ── SCALE ──────────────────────────────────────────────────────────────
-        const unitScale      = CONFIG.JACKET.MODEL_UNIT_SCALE  ?? 1.0;
+        // Model is in cm (W=88.57). worldSw is in metres.
+        // effectiveScale = worldSw(m) / modelW(cm) × spanRatio
+        // e.g. 0.45m / (88.57 × 0.85) = 0.45/75.3 = 0.006  ← correct THREE.js scale
+        // DO NOT multiply by unitScale — that caused 100× overscale before.
         const spanRatio      = CONFIG.RIG?.SHOULDER_SPAN_RATIO ?? 0.85;
         const scaleMult      = CONFIG.JACKET.SCALE_MULTIPLIER  ?? 1.0;
-        const jacketSwM      = this._modelW * spanRatio * unitScale;   // metres
-        const worldSw        = this._normWidthToWorld(sw, depth, cam); // metres
+        const jacketSwUnits  = this._modelW * spanRatio;               // in model units (cm)
+        const worldSw        = this._normWidthToWorld(sw, depth, cam); // in metres
         const effectiveScale = THREE.MathUtils.clamp(
-            (worldSw / Math.max(jacketSwM, 0.0001)) * scaleMult,
-            0.0001, 50.0
+            (worldSw / Math.max(jacketSwUnits, 0.0001)) * scaleMult,
+            0.000001, 1.0
         );
 
         // ── ROLL & LEAN ────────────────────────────────────────────────────────
@@ -291,15 +294,15 @@ class SkeletonMapper {
     }
 
     _centerScale(cam) {
-        if (!this.model || this._modelH <= 0) return 0.01;
+        if (!this.model || this._modelH <= 0) return 0.006;
         const depth     = 2.5;
-        const unitScale = CONFIG.JACKET.MODEL_UNIT_SCALE ?? 1.0;
-        const scaleMult = CONFIG.JACKET.SCALE_MULTIPLIER  ?? 1.0;
+        const scaleMult = CONFIG.JACKET.SCALE_MULTIPLIER ?? 1.0;
         const sceneH    = 2 * Math.tan(cam.fov * Math.PI / 360) * depth;
-        const targetH   = sceneH * 0.55;  // 55% of screen height
+        const targetH   = sceneH * 0.55;  // jacket fills ~55% of screen height
+        // _modelH is in cm (69.39), targetH is in metres → ratio gives correct scale
         return THREE.MathUtils.clamp(
-            (targetH / (this._modelH * unitScale)) * scaleMult,
-            0.0001, 500.0
+            (targetH / this._modelH) * scaleMult,
+            0.000001, 1.0
         );
     }
 
