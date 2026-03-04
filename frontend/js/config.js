@@ -26,6 +26,11 @@ const CONFIG = {
         // GLB is authored in CENTIMETRES → multiply by 0.01 to get metres
         MODEL_UNIT_SCALE: 0.01,
 
+        // Fine-tune jacket size without touching the math.
+        // > 1.0 = bigger,  < 1.0 = smaller
+        // Start at 1.0 and adjust if jacket looks too large/small after calibration
+        SCALE_MULTIPLIER: 1.0,
+
         ROTATION: { x: 0, y: Math.PI, z: 0 },
         SCALE:    1.0,
         POSITION: { x: 0, y: 0, z: -2.5 }
@@ -48,8 +53,11 @@ const CONFIG = {
             'Cube'
         ],
 
-        SHOULDER_SEAM_RATIO: 0.78,
-        SHOULDER_SPAN_RATIO: 0.60,
+        SHOULDER_SEAM_RATIO: 0.88,
+        // What fraction of the jacket's total width = the shoulder span
+        // Increase → jacket appears smaller.  Decrease → jacket appears larger.
+        // 0.85 works for most standard jacket models.
+        SHOULDER_SPAN_RATIO: 0.85,
 
         // Bone name overrides — match your actual GLB bone names
         BONE_NAME_OVERRIDES: {
