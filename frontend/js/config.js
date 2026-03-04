@@ -1,4 +1,4 @@
-// config.js — UPDATED: AI_PIPELINE enabled, API endpoints wired for live server
+// config.js — CLEAN VERSION (no backend, no AI pipeline)
 
 const CONFIG = {
 
@@ -23,20 +23,18 @@ const CONFIG = {
     JACKET: {
         MODEL_PATH: 'assets/models/20_Jacket.glb',
 
-        // ── MODEL_UNIT_SCALE ─────────────────────────────────────────────
-        // GLB is authored in CENTIMETERS.
-        // bbox W=88.574 cm × 0.01 = 0.886 m ✓ (correct shoulder width)
+        // GLB is authored in CENTIMETRES → multiply by 0.01 to get metres
         MODEL_UNIT_SCALE: 0.01,
 
         ROTATION: { x: 0, y: Math.PI, z: 0 },
-        SCALE:    0.5,
+        SCALE:    1.0,
         POSITION: { x: 0, y: 0, z: -2.5 }
     },
 
     /* ─────────────────────────── RIG ────────────────────────────────── */
     RIG: {
 
-        // ── Body mesh names ──────────────────────────────────────────────
+        // Body mesh names to HIDE (deformation only)
         BODY_MESH_NAMES: [
             'man_med_nrw_body',
             'man_med_nrw_hair',
@@ -53,7 +51,7 @@ const CONFIG = {
         SHOULDER_SEAM_RATIO: 0.78,
         SHOULDER_SPAN_RATIO: 0.60,
 
-        // ── Bone name overrides ──────────────────────────────────────────
+        // Bone name overrides — match your actual GLB bone names
         BONE_NAME_OVERRIDES: {
             pelvis:    'pelvis',
             spine1:    'spine_01',
@@ -124,52 +122,6 @@ const CONFIG = {
     UI: {
         TOAST_DURATION:       3000,
         POSE_GUIDE_DURATION:  5000
-    },
-
-    /* ─────────────────────────── OFFLINE MODE ───────────────────────── */
-    OFFLINE_MODE: {
-        // Set to true to fall back to 3D-only if WebSocket is unavailable (Step 32)
-        ENABLED: false
-    },
-
-    /* ─────────────────────────── API ────────────────────────────────── */
-    API: {
-BASE_URL: 'https://poachy-contumaciously-shan.ngrok-free.dev',
-WS_URL:   'wss://poachy-contumaciously-shan.ngrok-free.dev',
-
-  ENDPOINTS: {
-    HEALTH:             '/health',
-    VIRTUAL_TRYON:      '/api/tryon',
-    VIRTUAL_TRYON_FAST: '/api/tryon/fast',
-    WS_KEYFRAME:        '/ws/tryon',        // WebSocket endpoint
-}
-    },
-
-    /* ─────────────────────────── AI PIPELINE ────────────────────────── */
-    AI_PIPELINE: {
-        // ── NOW ENABLED — server confirmed ready ─────────────────────────
-        ENABLED: true,
-
-        // How often (ms) to send a keyframe to the AI server (Step 27)
-        // 2000ms = 1 AI-enhanced frame every 2 seconds
-        KEYFRAME_INTERVAL: 2000,
-
-        // JPEG quality for the camera frame sent over WebSocket (~50KB target)
-        JPEG_QUALITY: 0.80,
-
-        // Step 28: blending params
-        // How long (ms) to fade from Three.js → AI keyframe when one arrives
-        BLEND_TRANSITION_DURATION: 500,
-
-        // Max AI blend alpha — cap at 0.7 so live 3D tracking stays responsive
-        MAX_BLEND_ALPHA: 0.7,
-
-        // WebSocket reconnect strategy (Step 32 offline fallback)
-        MAX_RECONNECT_ATTEMPTS: 3,
-        RECONNECT_DELAY: 2000,          // ms between reconnect tries
-
-        // Premium capture: max ms to wait for the full-quality result (Step 29)
-        CAPTURE_TIMEOUT_MS: 10000
     },
 
     /* ─────────────────────────── DEBUG ──────────────────────────────── */
