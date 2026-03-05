@@ -208,7 +208,9 @@ class SkeletonMapper {
             this.smooth.roll
         );
 
-        if (poseRetargeter.initialized) poseRetargeter.update(lm, depth, cam);
+   if (poseRetargeter.initialized && !smplDriver.isActive()) {
+    poseRetargeter.update(lm, depth, cam);
+}
 
         if (this.frameCount % 90 === 1) {
             console.log(

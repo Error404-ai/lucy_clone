@@ -323,44 +323,44 @@ class SMPLDriver {
      * the bone stays exactly at its bind pose.  This makes the retargeting
      * independent of the GLB rest-pose orientation.
      */
-    _applyPose(poseFlat) {
-        const _tmpQ  = new THREE.Quaternion();
-        const _restQ = new THREE.Quaternion();
+   _applyPose(poseFlat) {
+    const _smplWorldQ   = new THREE.Quaternion();
+    const _parentWorldQ = new THREE.Quaternion();
 
-        for (const [idxStr, bone] of Object.entries(this.boneMap)) {
-            const idx    = parseInt(idxStr);
-            const offset = idx * 4;
+    // Jacket is rotated Math.PI on Y — pre-compute that correction
+    const _yFlip = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI, 0));
 
-            let qx = poseFlat[offset    ];
-            let qy = poseFlat[offset + 1];
-            let qz = poseFlat[offset + 2];
-            let qw = poseFlat[offset + 3];
+    for (const [idxStr, bone] of Object.entries(this.boneMap)) {
+        const idx    = parseInt(idxStr);
+        const offset = idx * 4;
 
-            // Right-side joints: negate x and z to correct for SMPL's
-            // symmetric rig convention versus some GLB exporters.
-            if (SMPLDriver.RIGHT_SIDE_JOINTS.has(idx)) {
-                qx = -qx;
-                qz = -qz;
-            }
+        let qx = poseFlat[offset];
+        let qy = poseFlat[offset + 1];
+        let qz = poseFlat[offset + 2];
+        let qw = poseFlat[offset + 3];
 
-            // Build the SMPL local quaternion
-            _tmpQ.set(qx, qy, qz, qw).normalize();
+        if (SMPLDriver.RIGHT_SIDE_JOINTS.has(idx)) { qx = -qx; qz = -qz; }
 
-            // Compose: restQuat × smplQuat
-            _restQ.copy(this.restQuats[idxStr] || this.restQuats[idx]);
-            _tmpQ.premultiply(_restQ);
+        // MediaPipe world → Three.js world (jacket is π-rotated, so flip X/Z)
+        _smplWorldQ.set(-qx, qy, -qz, qw).normalize();
 
-            // Slerp toward target
-            const smooth = this.smoothQ[idxStr] || this.smoothQ[idx];
-            smooth.slerp(_tmpQ, this.ALPHA);
-            bone.quaternion.copy(smooth);
+        // World-space → bone local-space
+        let localQ = _smplWorldQ.clone();
+        if (bone.parent) {
+            bone.parent.getWorldQuaternion(_parentWorldQ);
+            localQ.premultiply(_parentWorldQ.clone().invert());
         }
 
-        // Push changes to GPU skin matrices
-        const skel = modelLoader.getSkeleton();
-        if (skel) skel.update();
+        const smooth = this.smoothQ[idx] ?? this.smoothQ[idxStr];
+        if (smooth) {
+            smooth.slerp(localQ, this.ALPHA);
+            bone.quaternion.copy(smooth);
+        }
     }
 
+    const skel = modelLoader.getSkeleton();
+    if (skel) skel.update();
+}
     // ══════════════════════════════════════════════════════════════════════════
     // SMOOTHING CONFIG
     // ══════════════════════════════════════════════════════════════════════════
