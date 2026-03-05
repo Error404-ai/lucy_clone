@@ -1,4 +1,4 @@
-// config.js — CLEAN VERSION (no backend, no AI pipeline)
+// config.js — v2.0 (added SMPL / pose backend config)
 
 const CONFIG = {
 
@@ -8,6 +8,30 @@ const CONFIG = {
         HEIGHT:      720,
         FRAME_RATE:  30,
         FACING_MODE: 'user'
+    },
+
+    /* ─────────────────────────── API ────────────────────────────────── */
+    // All backend URLs live here — change once, updated everywhere.
+    API: {
+        BASE_URL:     'http://localhost:5000',
+        WS_URL:       'ws://localhost:5000/ws',        // legacy AI keyframes
+        WS_POSE_URL:  'ws://localhost:5000/ws/pose',   // ← NEW: SMPL pose
+        ENDPOINTS: {
+            FABRIC_CATALOG: '/api/fabric/catalog',
+            FABRIC_SCAN:    '/api/fabric/scan',
+            VIRTUAL_TRYON:  '/virtual-tryon',
+            HEALTH:         '/health',
+        }
+    },
+
+    /* ─────────────────────────── SMPL DRIVER ────────────────────────── */
+    SMPL: {
+        // How aggressively to follow pose updates (0 = frozen, 1 = instant)
+        SMOOTHING:       0.25,
+        // Frame send interval in ms (~12 fps keeps latency low)
+        SEND_INTERVAL_MS: 80,
+        // Minimum joint confidence from MediaPipe before rotation is applied
+        MIN_VISIBILITY:  0.30,
     },
 
     /* ─────────────────────────── SCENE ──────────────────────────────── */
@@ -21,16 +45,9 @@ const CONFIG = {
 
     /* ─────────────────────────── JACKET ─────────────────────────────── */
     JACKET: {
-        MODEL_PATH: 'assets/models/20_Jacket.glb',
-
-        // GLB is authored in CENTIMETRES → multiply by 0.01 to get metres
+        MODEL_PATH:      'assets/models/20_Jacket.glb',
         MODEL_UNIT_SCALE: 0.01,
-
-        // Fine-tune jacket size without touching the math.
-        // > 1.0 = bigger,  < 1.0 = smaller
-        // Start at 1.0 and adjust if jacket looks too large/small after calibration
         SCALE_MULTIPLIER: 1.0,
-
         ROTATION: { x: 0, y: Math.PI, z: 0 },
         SCALE:    1.0,
         POSITION: { x: 0, y: 0, z: -2.5 }
@@ -38,8 +55,6 @@ const CONFIG = {
 
     /* ─────────────────────────── RIG ────────────────────────────────── */
     RIG: {
-
-        // Body mesh names to HIDE (deformation only)
         BODY_MESH_NAMES: [
             'man_med_nrw_body',
             'man_med_nrw_hair',
@@ -52,14 +67,8 @@ const CONFIG = {
             'Mesh035_6',
             'Cube'
         ],
-
         SHOULDER_SEAM_RATIO: 0.88,
-        // What fraction of the jacket's total width = the shoulder span
-        // Increase → jacket appears smaller.  Decrease → jacket appears larger.
-        // 0.85 works for most standard jacket models.
         SHOULDER_SPAN_RATIO: 0.85,
-
-        // Bone name overrides — match your actual GLB bone names
         BONE_NAME_OVERRIDES: {
             pelvis:    'pelvis',
             spine1:    'spine_01',
@@ -95,7 +104,6 @@ const CONFIG = {
         MIN_SCALE:        0.3,
         MAX_SCALE:        1.0,
         DEPTH_OFFSET:     2.5,
-
         LANDMARKS: {
             NOSE:           0,
             LEFT_EYE:       2,
@@ -111,7 +119,6 @@ const CONFIG = {
             LEFT_HIP:       23,
             RIGHT_HIP:      24
         },
-
         BONE_ANIMATION: {
             ENABLED:              true,
             ROTATION_SMOOTHING:   0.18,
@@ -134,7 +141,7 @@ const CONFIG = {
 
     /* ─────────────────────────── DEBUG ──────────────────────────────── */
     DEBUG: {
-        VERBOSE:         true,
+        VERBOSE:         false,
         SHOW_LANDMARKS:  false,
         SHOW_SKELETON:   false,
         SHOW_BONE_NAMES: false,

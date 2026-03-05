@@ -32,13 +32,8 @@
     <!-- Main App Container -->
     <div id="app-container" class="app-container" style="display: none;">
         
-        <!-- Camera Video (Hidden, used for capture) -->
         <video id="camera-video" autoplay playsinline style="display: none;"></video>
-        
-        <!-- Main Canvas (Camera + 3D Overlay) -->
         <canvas id="main-canvas"></canvas>
-        
-        <!-- MediaPipe Canvas (Hidden, for pose detection) -->
         <canvas id="pose-canvas" style="display: none;"></canvas>
         
         <!-- Top Bar -->
@@ -57,7 +52,7 @@
                 </div>
                 <div class="status-item" id="ai-status">
                     <span class="status-dot"></span>
-                    <span>AI</span>
+                    <span>AI Pose</span>
                 </div>
                 <div class="fps-counter" id="fps-counter">30 FPS</div>
             </div>
@@ -88,7 +83,6 @@
                     📷 Scan Fabric
                 </button>
             </div>
-            
             <div class="fabric-scroll" id="fabric-scroll">
                 <div class="fabric-item loading-skeleton">
                     <div class="fabric-thumbnail"></div>
@@ -105,7 +99,7 @@
                     <circle cx="30" cy="30" r="24" fill="none" stroke="#333" stroke-width="2"/>
                 </svg>
             </button>
-            <p class="capture-hint">Tap to capture premium view</p>
+            <p class="capture-hint">Tap to capture</p>
         </div>
 
         <!-- AI Blend Indicator -->
@@ -162,21 +156,22 @@
     </div>
 
     <!-- ─── Scripts (load order matters) ────────────────────────────────────
-         config.js        must be first  — all others depend on CONFIG
-         utils.js         second         — all others use Utils
-         keyframe-selector.js            — standalone, no deps
-         camera.js                       — uses CONFIG, Utils
-         pose-tracker.js                 — uses CONFIG, Utils
-         scene.js                        — uses THREE, CONFIG
-         loader.js                       — uses THREE, CONFIG, sceneManager, skeletonMapper
-         materials.js                    — uses THREE, modelLoader, skeletonMapper, sceneManager
-         skeleton-mapper.js              — uses THREE, CONFIG, modelLoader, sceneManager, poseRetargeter
-         pose-retargeter.js              — uses THREE, CONFIG, modelLoader
-         renderer.js                     — uses THREE, CONFIG, sceneManager, cameraManager
-         fabric-selector.js              — uses materialsManager, modelLoader, Utils
-         ai-pipeline.js                  — uses CONFIG, Utils, cameraManager, poseTracker, etc.
-         capture.js                      — uses CONFIG, Utils, cameraManager, etc.
-         app.js                          — last: orchestrates all the above
+         config.js        first  — all others read CONFIG
+         utils.js         second — shared helpers
+         keyframe-selector.js
+         camera.js
+         pose-tracker.js
+         scene.js
+         pose-retargeter.js
+         skeleton-mapper.js
+         loader.js
+         materials.js
+         renderer.js
+         fabric-selector.js
+         ai-pipeline.js    (legacy stub)
+         smpl-driver.js    ← NEW: must load before app.js
+         capture.js
+         app.js            last — orchestrates everything
     ──────────────────────────────────────────────────────────────────────── -->
     <script src="js/config.js"></script>
     <script src="js/utils.js"></script>
@@ -184,18 +179,14 @@
     <script src="js/camera.js"></script>
     <script src="js/pose-tracker.js"></script>
     <script src="js/scene.js"></script>
-
-    <!-- pose-retargeter BEFORE skeleton-mapper (mapper calls poseRetargeter.init) -->
     <script src="js/pose-retargeter.js"></script>
     <script src="js/skeleton-mapper.js"></script>
-
-    <!-- loader AFTER skeleton-mapper (loader calls skeletonMapper.setJacket) -->
     <script src="js/loader.js"></script>
-
     <script src="js/materials.js"></script>
     <script src="js/renderer.js"></script>
     <script src="js/fabric-selector.js"></script>
     <script src="js/ai-pipeline.js"></script>
+    <script src="js/smpl-driver.js"></script>  <!-- ← NEW -->
     <script src="js/capture.js"></script>
     <script src="js/app.js"></script>
 
