@@ -53,62 +53,67 @@ class SkeletonMapper {
     // JACKET SETUP
     // ═══════════════════════════════════════════════════════════════════════════
     setJacket(model) {
-        this.model        = model;
-        this.jacketMeshes = modelLoader.getMeshes();
+    this.model        = model;
+    this.jacketMeshes = modelLoader.getMeshes();
 
-        const bbox = new THREE.Box3();
-        if (this.jacketMeshes.length > 0) {
-            this.jacketMeshes.forEach(m => bbox.expandByObject(m));
-        } else {
-            bbox.setFromObject(model);
-        }
+    // Find the clavicle bone — this is our anchor point
+    const skeleton = modelLoader.getSkeleton();
+    this._clavicleL = null;
+    this._clavicleR = null;
+    this._pelvis    = null;
 
-        if (!bbox.isEmpty()) {
-            const sz     = new THREE.Vector3();
-            bbox.getSize(sz);
-            this._modelW = sz.x > 0 ? sz.x : 1.0;
-            this._modelH = sz.y > 0 ? sz.y : 1.0;
-            console.log(`📐 Jacket bbox — W:${sz.x.toFixed(2)} H:${sz.y.toFixed(2)} (model units)`);
-        }
-
-        this._shoulderLocalY = this._findShoulderLocalY(model, bbox);
-        console.log(`🦴 Shoulder seam local Y: ${this._shoulderLocalY.toFixed(2)} model-units`);
-
-        const skeleton = modelLoader.getSkeleton();
-        if (skeleton) poseRetargeter.init(skeleton);
-
-        this._parkAtCenter();
-        model.visible = true;
-        console.log('🧥 Jacket visible — waiting for pose calibration');
+    if (skeleton) {
+        skeleton.bones.forEach(b => {
+            const n = b.name.toLowerCase();
+            if (n === 'clavicle_l') this._clavicleL = b;
+            if (n === 'clavicle_r') this._clavicleR = b;
+            if (n === 'pelvis')     this._pelvis    = b;
+        });
+        poseRetargeter.init(skeleton);
     }
 
-    _findShoulderLocalY(model, bbox) {
-        const skeleton = modelLoader.getSkeleton();
-        if (skeleton && skeleton.bones.length > 0) {
-            const bone = skeleton.bones.find(b => {
-                const n = b.name.toLowerCase();
-                return n.includes('clavicle') || n.includes('collar') ||
-                       (n.includes('shoulder') && !n.includes('upper'));
-            });
-            if (bone) {
-                model.updateWorldMatrix(true, true);
-                const wPos = new THREE.Vector3();
-                bone.getWorldPosition(wPos);
-                const inv  = new THREE.Matrix4().copy(model.matrixWorld).invert();
-                const lPos = wPos.clone().applyMatrix4(inv);
-                console.log(`  clavicle world Y=${wPos.y.toFixed(3)} → local Y=${lPos.y.toFixed(3)}`);
-                return lPos.y;
-            }
-        }
-        // Fallback: 88% up the bbox
-        if (!bbox.isEmpty()) {
-            const sz = new THREE.Vector3();
-            bbox.getSize(sz);
-            return bbox.min.y + sz.y * 0.88;
-        }
-        return 0;
-    }
+    // Get model dimensions for scale only
+    const bbox = new THREE.Box3().setFromObject(model);
+    const sz   = new THREE.Vector3();
+    bbox.getSize(sz);
+    this._modelW = sz.x > 0 ? sz.x : 88.57;
 
+    model.visible = true;
+    this._parkAtCenter();
+    console.log('🧥 Jacket ready — bone-anchored positioning active');
+}
+
+_applyTransform(worldShoulderPos, effectiveScale, lean, roll) {
+    if (!this.model) return;
+
+    // Step 1: apply scale and base rotation first
+    this.model.scale.setScalar(effectiveScale);
+    this.model.rotation.order = 'YXZ';
+    this.model.rotation.y     = Math.PI;
+    this.model.rotation.x     = lean ?? 0;
+    this.model.rotation.z     = roll ?? 0;
+
+    // Step 2: move to origin so we can read bone world positions
+    this.model.position.set(0, 0, worldShoulderPos.z);
+    this.model.updateMatrixWorld(true);
+
+    // Step 3: find where the clavicle bones actually are at this scale
+    if (this._clavicleL && this._clavicleR) {
+        const wpL = new THREE.Vector3();
+        const wpR = new THREE.Vector3();
+        this._clavicleL.getWorldPosition(wpL);
+        this._clavicleR.getWorldPosition(wpR);
+        const boneMid = wpL.clone().add(wpR).multiplyScalar(0.5);
+
+        // Step 4: offset model so bone midpoint lands on detected shoulder
+        this.model.position.x += worldShoulderPos.x - boneMid.x;
+        this.model.position.y += worldShoulderPos.y - boneMid.y;
+    } else {
+        // Fallback if bones not found
+        this.model.position.x = worldShoulderPos.x;
+        this.model.position.y = worldShoulderPos.y;
+    }
+}
     // ═══════════════════════════════════════════════════════════════════════════
     // FABRIC APPLIED
     // ═══════════════════════════════════════════════════════════════════════════
@@ -229,19 +234,19 @@ class SkeletonMapper {
     //
     // group.position.y = worldShoulderPos.y − shoulderLocalY × effectiveScale
     // ═══════════════════════════════════════════════════════════════════════════
-    _applyTransform(worldShoulderPos, effectiveScale, lean, roll) {
-        if (!this.model) return;
+    // _applyTransform(worldShoulderPos, effectiveScale, lean, roll) {
+    //     if (!this.model) return;
 
-        const pos = worldShoulderPos.clone();
-       pos.y -= (this._shoulderLocalY - bbox.min.y) * effectiveScale;  // shift so shoulder seam aligns
+    //     const pos = worldShoulderPos.clone();
+    //    pos.y -= (this._shoulderLocalY - bbox.min.y) * effectiveScale;  // shift so shoulder seam aligns
 
-        this.model.position.copy(pos);
-        this.model.scale.setScalar(effectiveScale);
-        this.model.rotation.order = 'YXZ';
-        this.model.rotation.y     = Math.PI;
-        this.model.rotation.x     = lean ?? 0;
-        this.model.rotation.z     = roll ?? 0;
-    }
+    //     this.model.position.copy(pos);
+    //     this.model.scale.setScalar(effectiveScale);
+    //     this.model.rotation.order = 'YXZ';
+    //     this.model.rotation.y     = Math.PI;
+    //     this.model.rotation.x     = lean ?? 0;
+    //     this.model.rotation.z     = roll ?? 0;
+    // }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // CALIBRATION
