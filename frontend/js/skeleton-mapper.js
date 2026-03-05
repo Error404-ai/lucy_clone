@@ -233,7 +233,7 @@ class SkeletonMapper {
         if (!this.model) return;
 
         const pos = worldShoulderPos.clone();
-        pos.y -= this._shoulderLocalY * effectiveScale;  // shift so shoulder seam aligns
+       pos.y -= (this._shoulderLocalY - bbox.min.y) * effectiveScale;  // shift so shoulder seam aligns
 
         this.model.position.copy(pos);
         this.model.scale.setScalar(effectiveScale);
@@ -300,7 +300,7 @@ class SkeletonMapper {
         const depth     = 2.5;
         const scaleMult = CONFIG.JACKET.SCALE_MULTIPLIER ?? 1.0;
         const sceneH    = 2 * Math.tan(cam.fov * Math.PI / 360) * depth;
-        const targetH   = sceneH * 0.55;  // jacket fills ~55% of screen height
+   const targetH = sceneH * 0.85;
         // _modelH is in cm (69.39), targetH is in metres → ratio gives correct scale
         return THREE.MathUtils.clamp(
             (targetH / this._modelH) * scaleMult,
